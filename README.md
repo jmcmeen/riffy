@@ -1,7 +1,5 @@
 # riffy
 
-A low-dependency Python library for parsing and managing RIFF (Resource Interchange File Format) files.
-
 Riffy provides a pure Python implementation for working with RIFF format files, with initial support for WAV audio files. The library is designed to have **zero external dependencies** while providing robust parsing capabilities for managing RIFF chunks.
 
 ## Features
