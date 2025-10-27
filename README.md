@@ -98,6 +98,33 @@ info = parser.get_info()
 print(f"Total samples: {info['sample_count']}")
 ```
 
+### Exporting Chunks to Binary Files
+
+```python
+from riffy import WAVParser
+
+parser = WAVParser("audio.wav")
+parser.parse()
+
+# Export raw audio data (most common use case)
+bytes_written = parser.export_audio_data("raw_audio.bin")
+print(f"Exported {bytes_written} bytes of audio data")
+
+# Export specific chunks
+parser.export_chunk('fmt ', "format_chunk.bin")
+parser.export_chunk('data', "data_chunk.bin")
+
+# List all available chunks before exporting
+chunks = parser.list_chunks()
+for chunk_id, info in chunks.items():
+    print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
+
+# Export all chunks
+for chunk_id in chunks.keys():
+    filename = f"{chunk_id.strip()}_chunk.bin"
+    parser.export_chunk(chunk_id, filename)
+```
+
 ### Getting Detailed File Information
 
 ```python
@@ -171,6 +198,46 @@ Parse the WAV file and return comprehensive information.
 Get comprehensive information about the parsed WAV file.
 
 **Returns:** Dictionary with file metadata (must call `parse()` first)
+
+##### `export_chunk(chunk_id: str, output_path: Union[str, Path]) -> int`
+
+Export a specific chunk's data to a binary file.
+
+**Parameters:**
+
+- `chunk_id`: The ID of the chunk to export (e.g., 'fmt ', 'data')
+- `output_path`: Path where the chunk data will be written
+
+**Returns:** Number of bytes written
+
+**Raises:**
+
+- `WAVError`: If file hasn't been parsed yet
+- `KeyError`: If the specified chunk doesn't exist
+
+##### `export_audio_data(output_path: Union[str, Path]) -> int`
+
+Export raw audio data to a binary file (convenience method).
+
+**Parameters:**
+
+- `output_path`: Path where the audio data will be written
+
+**Returns:** Number of bytes written
+
+**Raises:**
+
+- `WAVError`: If file hasn't been parsed yet or no audio data exists
+
+##### `list_chunks() -> Dict[str, Dict[str, int]]`
+
+List all chunks in the WAV file with their sizes and offsets.
+
+**Returns:** Dictionary mapping chunk IDs to their metadata (size and offset)
+
+**Raises:**
+
+- `WAVError`: If file hasn't been parsed yet
 
 #### Properties
 
@@ -304,7 +371,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Full type hints
 - Comprehensive error handling
 
-## Acknowledgments
+## References
 
 - RIFF format specification: [Microsoft RIFF Specification](https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-)
 - WAV format specification: [WAV Audio File Format](http://soundfile.sapp.org/doc/WaveFormat/)

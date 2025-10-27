@@ -5,6 +5,45 @@ Example usage of the riffy library for parsing WAV files.
 
 from riffy import WAVParser, InvalidWAVFormatError, CorruptedFileError
 import json
+import struct
+from pathlib import Path
+
+
+def create_sample_wav(filepath: str = "example.wav") -> str:
+    """Create a sample WAV file for demonstration."""
+    # Create a simple 1-second WAV file (16-bit stereo @ 44.1kHz)
+    sample_rate = 44100
+    channels = 2
+    bits_per_sample = 16
+    num_samples = sample_rate  # 1 second
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    data_size = num_samples * channels * bits_per_sample // 8
+
+    # Generate simple audio data (sine-like pattern for demonstration)
+    audio_data = bytes([i % 256 for i in range(data_size)])
+
+    # Write WAV file
+    with open(filepath, 'wb') as f:
+        # RIFF header
+        f.write(b'RIFF')
+        chunks_size = 4 + 8 + 16 + 8 + data_size
+        f.write(struct.pack('<I', chunks_size))
+        f.write(b'WAVE')
+
+        # Format chunk
+        f.write(b'fmt ')
+        f.write(struct.pack('<I', 16))
+        fmt_data = struct.pack('<HHIIHH', 1, channels, sample_rate,
+                               byte_rate, block_align, bits_per_sample)
+        f.write(fmt_data)
+
+        # Data chunk
+        f.write(b'data')
+        f.write(struct.pack('<I', data_size))
+        f.write(audio_data)
+
+    return filepath
 
 
 def main():
@@ -15,7 +54,13 @@ def main():
     print("Riffy - WAV File Parser Example")
     print("=" * 60)
 
-    wav_file = "example.wav"  # Replace with your WAV file path
+    wav_file = "example.wav"
+
+    # Create a sample WAV file if it doesn't exist
+    if not Path(wav_file).exists():
+        print(f"\nCreating sample WAV file: {wav_file}")
+        create_sample_wav(wav_file)
+        print("Sample file created successfully!")
 
     try:
         # Create parser instance
