@@ -30,7 +30,7 @@ def export_example() -> None:
     data_size = num_samples * channels * bits_per_sample // 8
 
     # Generate simple audio data (sine-like pattern)
-    audio_data = bytes([i % 256 for i in range(data_size)])
+    audio_data = bytes(i % 256 for i in range(data_size))
 
     # Write WAV file
     with open(wav_file, 'wb') as f:
