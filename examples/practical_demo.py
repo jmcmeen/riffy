@@ -76,7 +76,7 @@ def demo_replace_with_binary():
 
         # Parse and modify
         parser = WAVParser(wav_path)
-        parser.parse()
+        parser.get_info()
         print(f"Original audio size: {len(parser.audio_data)} bytes")
 
         # Replace with binary data
@@ -91,7 +91,7 @@ def demo_replace_with_binary():
 
         # Verify
         verify = WAVParser(output_path)
-        verify.parse()
+        verify
         print(f"Verification: Audio data matches = {verify.audio_data == new_audio_data}")
         print("✓ Success!")
 
@@ -112,7 +112,7 @@ def demo_add_metadata():
 
         # Parse and add metadata
         parser = WAVParser(wav_path)
-        parser.parse()
+        parser.get_info()
 
         print(f"Original chunks: {list(parser.chunks.keys())}")
 
@@ -129,7 +129,7 @@ def demo_add_metadata():
 
         # Verify
         verify = WAVParser(output_path)
-        verify.parse()
+        verify
         print(f"Verified chunks: {list(verify.chunks.keys())}")
         print(f"INFO chunk content: {verify.chunks['INFO'].data}")
         print("✓ Success!")
@@ -154,11 +154,11 @@ def demo_copy_between_files():
 
         # Parse both
         source = WAVParser(source_path)
-        source.parse()
+        source
         source.add_chunk('INFO', b'Source metadata\x00')
 
         destination = WAVParser(dest_path)
-        destination.parse()
+        destination
 
         print(f"Source audio size: {len(source.audio_data)} bytes")
         print(f"Destination audio size: {len(destination.audio_data)} bytes")
@@ -176,7 +176,7 @@ def demo_copy_between_files():
 
         # Verify
         verify = WAVParser(output_path)
-        verify.parse()
+        verify
         print(f"Verified audio matches source: {verify.audio_data == source.audio_data}")
         print(f"Verified INFO chunk: {verify.chunks['INFO'].data}")
         print("✓ Success!")
@@ -197,7 +197,7 @@ def demo_overwrite_original():
 
         # Parse
         parser = WAVParser(wav_path)
-        parser.parse()
+        parser.get_info()
 
         original_size = wav_path.stat().st_size
         print(f"Original file size: {original_size} bytes")
@@ -220,7 +220,7 @@ def demo_overwrite_original():
 
         # Verify
         verify = WAVParser(wav_path)
-        verify.parse()
+        verify
         print(f"Verified INFO chunk exists: {'INFO' in verify.chunks}")
         print("✓ Success!")
 
@@ -244,7 +244,7 @@ def demo_complete_workflow():
 
         # Parse
         parser = WAVParser(original_path)
-        info = parser.parse()
+        info = parser.get_info()
 
         print(f"\nOriginal file info:")
         print(f"  Size: {info['file_size']} bytes")
@@ -278,7 +278,7 @@ def demo_complete_workflow():
 
         # Verify
         verify = WAVParser(output_path)
-        verify_info = verify.parse()
+        verify_info = verify
 
         print(f"\nOutput file verification:")
         print(f"  Chunks: {list(verify.chunks.keys())}")

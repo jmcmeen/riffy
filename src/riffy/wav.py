@@ -33,15 +33,18 @@ class WAVChunk:
 
 class WAVParser:
     """Pure Python WAV file parser."""
-    
+
     def __init__(self, file_path: Union[str, Path]):
-        """Initialize parser with file path."""
+        """Initialize parser with file path and automatically parse the file."""
         self.file_path = Path(file_path)
         self.format_info: Optional[WAVFormat] = None
         self.chunks: Dict[str, WAVChunk] = {}
         self.audio_data: Optional[bytes] = None
         self._file_size = 0
-        
+
+        # Automatically parse the file on initialization
+        self.parse()
+
     def parse(self) -> Dict:
         """Parse the WAV file and return comprehensive information."""
         if not self.file_path.exists():

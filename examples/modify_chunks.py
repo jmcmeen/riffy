@@ -21,7 +21,7 @@ def example_replace_chunk_from_binary():
     # In practice, you would use actual file paths
     print("# Parse the original WAV file")
     print("parser = WAVParser('audio.wav')")
-    print("parser.parse()")
+    print("parser.get_info()")
     print()
 
     print("# Read new chunk data from a binary file")
@@ -44,7 +44,7 @@ def example_add_metadata_chunks():
 
     print("# Parse the WAV file")
     print("parser = WAVParser('audio.wav')")
-    print("parser.parse()")
+    print("parser.get_info()")
     print()
 
     print("# Add various metadata chunks (4-character IDs)")
@@ -64,10 +64,10 @@ def example_copy_chunk_between_files():
 
     print("# Parse both WAV files")
     print("source = WAVParser('source.wav')")
-    print("source.parse()")
+    print("source")
     print()
     print("destination = WAVParser('destination.wav')")
-    print("destination.parse()")
+    print("destination")
     print()
 
     print("# Copy the data chunk from source to destination")
@@ -85,7 +85,7 @@ def example_set_chunk_convenience():
 
     print("# Parse the WAV file")
     print("parser = WAVParser('audio.wav')")
-    print("parser.parse()")
+    print("parser.get_info()")
     print()
 
     print("# set_chunk will add if doesn't exist, replace if it does")
@@ -109,7 +109,7 @@ def example_overwrite_original():
 
     print("# Parse the WAV file")
     print("parser = WAVParser('audio.wav')")
-    print("parser.parse()")
+    print("parser.get_info()")
     print()
 
     print("# Make modifications")
@@ -138,7 +138,7 @@ def example_complete_workflow():
     print()
     print("# Parse the original file")
     print("parser = WAVParser('original.wav')")
-    print("info = parser.parse()")
+    print("info = parser.get_info()")
     print("print(f'Loaded WAV: {info[\"file_size\"]} bytes, {info[\"duration_seconds\"]:.2f} seconds')")
     print()
 
@@ -168,7 +168,7 @@ def example_complete_workflow():
 
     print("# Verify the output")
     print("verify = WAVParser(output_path)")
-    print("verify.parse()")
+    print("verify")
     print("print(f'Verification: {len(verify.audio_data)} bytes audio, {len(verify.chunks)} chunks')")
     print("print(f'Chunks: {list(verify.chunks.keys())}')")
     print()
