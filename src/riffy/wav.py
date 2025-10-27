@@ -195,6 +195,107 @@ class WAVParser:
         """Calculate total number of samples."""
         if not self.audio_data or not self.format_info:
             return 0
-        
+
         bytes_per_sample = self.format_info.bits_per_sample // 8
         return len(self.audio_data) // (bytes_per_sample * self.format_info.channels)
+
+    def export_chunk(self, chunk_id: str, output_path: Union[str, Path]) -> int:
+        """
+        Export a specific chunk's data to a binary file.
+
+        Args:
+            chunk_id: The ID of the chunk to export (e.g., 'fmt ', 'data')
+            output_path: Path where the chunk data will be written
+
+        Returns:
+            Number of bytes written
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            KeyError: If the specified chunk doesn't exist
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> parser.export_chunk('data', 'audio_data.bin')
+            176400
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        if chunk_id not in self.chunks:
+            available_chunks = ', '.join(self.chunks.keys())
+            raise KeyError(
+                f"Chunk '{chunk_id}' not found. Available chunks: {available_chunks}"
+            )
+
+        chunk = self.chunks[chunk_id]
+        output_path = Path(output_path)
+
+        with open(output_path, 'wb') as f:
+            f.write(chunk.data)
+
+        return len(chunk.data)
+
+    def export_audio_data(self, output_path: Union[str, Path]) -> int:
+        """
+        Export raw audio data to a binary file (convenience method).
+
+        This is equivalent to export_chunk('data', output_path) but provides
+        a more intuitive interface for the common use case of extracting audio.
+
+        Args:
+            output_path: Path where the audio data will be written
+
+        Returns:
+            Number of bytes written
+
+        Raises:
+            WAVError: If file hasn't been parsed yet or no audio data exists
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> parser.export_audio_data('raw_audio.bin')
+            176400
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        if not self.audio_data:
+            raise WAVError("No audio data available to export.")
+
+        output_path = Path(output_path)
+
+        with open(output_path, 'wb') as f:
+            f.write(self.audio_data)
+
+        return len(self.audio_data)
+
+    def list_chunks(self) -> Dict[str, Dict[str, int]]:
+        """
+        List all chunks in the WAV file with their sizes and offsets.
+
+        Returns:
+            Dictionary mapping chunk IDs to their metadata (size and offset)
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> chunks = parser.list_chunks()
+            >>> print(chunks)
+            {'fmt ': {'size': 16, 'offset': 12}, 'data': {'size': 176400, 'offset': 36}}
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        return {
+            chunk_id: {
+                'size': chunk.size,
+                'offset': chunk.offset
+            }
+            for chunk_id, chunk in self.chunks.items()
+        }
