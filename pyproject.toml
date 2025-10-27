@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "riffy"
 version = "0.1.2"
-description = "A low-dependency Python library for parsing and managing RIFF format files"
+description = "A pure Python library for parsing and managing RIFF format files"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.8"
