@@ -12,7 +12,7 @@ from pathlib import Path
 from riffy import WAVParser
 
 
-def export_example():
+def export_example() -> None:
     """Demonstrate chunk export functionality."""
     # For this example, we'll create a simple WAV file first
     # In real usage, you would have an existing WAV file
@@ -128,7 +128,7 @@ def export_example():
     print("Done!")
 
 
-def error_handling_example():
+def error_handling_example() -> None:
     """Demonstrate error handling in export operations."""
     print("\n" + "="*60)
     print("Error Handling Examples")
