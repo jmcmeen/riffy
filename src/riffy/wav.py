@@ -14,16 +14,12 @@ class WAVFormat:
     byte_rate: int
     block_align: int
     bits_per_sample: int
-    
+    duration_seconds: float = 0.0
+
     @property
     def is_pcm(self) -> bool:
         """Check if format is PCM (uncompressed)."""
         return self.audio_format == 1
-    
-    @property
-    def duration_seconds(self) -> float:
-        """Calculate duration based on byte rate (requires data size)."""
-        return getattr(self, '_duration', 0.0)
 
 
 @dataclass
@@ -81,9 +77,16 @@ class WAVParser:
             chunk_header = f.read(8)
             if len(chunk_header) < 8:
                 break
-            
+
             chunk_id, chunk_size = struct.unpack('<4sI', chunk_header)
-            chunk_id = chunk_id.decode('ascii', errors='ignore')
+
+            # Decode chunk ID with strict ASCII validation
+            try:
+                chunk_id = chunk_id.decode('ascii')
+                if len(chunk_id) != 4:
+                    raise CorruptedFileError(f"Invalid chunk ID length: {len(chunk_id)}")
+            except UnicodeDecodeError as e:
+                raise CorruptedFileError(f"Invalid chunk ID (non-ASCII bytes): {chunk_id!r}") from e
             
             chunk_offset = f.tell()
             chunk_data = f.read(chunk_size)
@@ -109,11 +112,28 @@ class WAVParser:
         """Parse the format chunk."""
         if len(data) < 16:
             raise InvalidWAVFormatError("Format chunk too small")
-        
+
         fmt_data = struct.unpack('<HHIIHH', data[:16])
-        
+        audio_format = fmt_data[0]
+
+        # Non-PCM formats have extra fields (cbSize + extension data)
+        if audio_format != 1 and len(data) < 18:
+            raise InvalidWAVFormatError(
+                f"Non-PCM format (type {audio_format}) requires at least 18 bytes in format chunk"
+            )
+
+        # For non-PCM formats, read cbSize to validate extension data
+        if audio_format != 1:
+            cb_size = struct.unpack('<H', data[16:18])[0]
+            expected_size = 18 + cb_size
+            if len(data) < expected_size:
+                raise InvalidWAVFormatError(
+                    f"Format chunk size ({len(data)} bytes) is smaller than expected "
+                    f"({expected_size} bytes) for format type {audio_format}"
+                )
+
         self.format_info = WAVFormat(
-            audio_format=fmt_data[0],
+            audio_format=audio_format,
             channels=fmt_data[1],
             sample_rate=fmt_data[2],
             byte_rate=fmt_data[3],
@@ -124,8 +144,7 @@ class WAVParser:
     def _calculate_duration(self) -> None:
         """Calculate audio duration after all chunks are parsed."""
         if self.audio_data and self.format_info and self.format_info.byte_rate > 0:
-            duration = len(self.audio_data) / self.format_info.byte_rate
-            self.format_info._duration = duration
+            self.format_info.duration_seconds = len(self.audio_data) / self.format_info.byte_rate
     
     def _validate_format(self) -> None:
         """Validate the parsed format."""
