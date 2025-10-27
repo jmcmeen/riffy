@@ -39,7 +39,7 @@ def create_wav_file(
     data_size = num_samples * channels * bits_per_sample // 8
 
     # Create audio data (simple sine-like pattern)
-    audio_data = bytes([i % 256 for i in range(data_size)])
+    audio_data = bytes(i % 256 for i in range(data_size))
 
     # Build format chunk
     fmt_chunk_data = struct.pack(
@@ -78,7 +78,7 @@ def create_wav_file(
         f.write(wave_id)
 
         # Format chunk
-        chunk_id = invalid_chunk_id if invalid_chunk_id else b'fmt '
+        chunk_id = invalid_chunk_id or b'fmt '
         f.write(chunk_id)
         f.write(struct.pack('<I', fmt_chunk_size))
 
