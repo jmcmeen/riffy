@@ -304,7 +304,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Full type hints
 - Comprehensive error handling
 
-## Acknowledgments
+## References
 
 - RIFF format specification: [Microsoft RIFF Specification](https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-)
 - WAV format specification: [WAV Audio File Format](http://soundfile.sapp.org/doc/WaveFormat/)
