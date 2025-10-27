@@ -63,12 +63,12 @@ def main():
         print("Sample file created successfully!")
 
     try:
-        # Create parser instance
+        # Create parser instance (automatically parses the file)
+        print(f"\nParsing: {wav_file}")
         parser = WAVParser(wav_file)
 
-        # Parse the file
-        print(f"\nParsing: {wav_file}")
-        info = parser.parse()
+        # Get file information
+        info = parser.get_info()
 
         # Display format information
         print("\nFormat Information:")

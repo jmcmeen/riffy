@@ -33,15 +33,18 @@ class WAVChunk:
 
 class WAVParser:
     """Pure Python WAV file parser."""
-    
+
     def __init__(self, file_path: Union[str, Path]):
-        """Initialize parser with file path."""
+        """Initialize parser with file path and automatically parse the file."""
         self.file_path = Path(file_path)
         self.format_info: Optional[WAVFormat] = None
         self.chunks: Dict[str, WAVChunk] = {}
         self.audio_data: Optional[bytes] = None
         self._file_size = 0
-        
+
+        # Automatically parse the file on initialization
+        self.parse()
+
     def parse(self) -> Dict:
         """Parse the WAV file and return comprehensive information."""
         if not self.file_path.exists():
@@ -211,7 +214,7 @@ class WAVParser:
             Number of bytes written
 
         Raises:
-            WAVError: If file hasn't been parsed yet
+            WAVError: If file hasn't been parsed yet or file write errors occur
             KeyError: If the specified chunk doesn't exist
 
         Example:
@@ -232,8 +235,11 @@ class WAVParser:
         chunk = self.chunks[chunk_id]
         output_path = Path(output_path)
 
-        with open(output_path, 'wb') as f:
-            f.write(chunk.data)
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(chunk.data)
+        except OSError as e:
+            raise WAVError(f"Failed to write chunk to {output_path}: {e}") from e
 
         return len(chunk.data)
 
@@ -265,12 +271,7 @@ class WAVParser:
         if not self.audio_data:
             raise WAVError("No audio data available to export.")
 
-        output_path = Path(output_path)
-
-        with open(output_path, 'wb') as f:
-            f.write(self.audio_data)
-
-        return len(self.audio_data)
+        return self.export_chunk('data', output_path)
 
     def list_chunks(self) -> Dict[str, Dict[str, int]]:
         """
@@ -299,3 +300,258 @@ class WAVParser:
             }
             for chunk_id, chunk in self.chunks.items()
         }
+
+    def replace_chunk(self, chunk_id: str, new_data: bytes) -> None:
+        """
+        Replace an existing chunk's data with new data.
+
+        Args:
+            chunk_id: The ID of the chunk to replace (e.g., 'fmt ', 'data')
+            new_data: The new chunk data (raw bytes)
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            KeyError: If the specified chunk doesn't exist
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> with open("new_data.bin", "rb") as f:
+            ...     parser.replace_chunk('data', f.read())
+            >>> parser.write_wav("modified.wav")
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        if chunk_id not in self.chunks:
+            available_chunks = ', '.join(self.chunks.keys())
+            raise KeyError(
+                f"Chunk '{chunk_id}' not found. Available chunks: {available_chunks}"
+            )
+
+        # Update the chunk data
+        old_chunk = self.chunks[chunk_id]
+        self.chunks[chunk_id] = WAVChunk(
+            id=chunk_id,
+            size=len(new_data),
+            data=new_data,
+            offset=old_chunk.offset  # Offset will be recalculated on write
+        )
+
+        # Update audio_data if this is the data chunk
+        if chunk_id == 'data':
+            self.audio_data = new_data
+            self._calculate_duration()
+
+    def add_chunk(self, chunk_id: str, chunk_data: bytes) -> None:
+        """
+        Add a new chunk to the WAV file.
+
+        Args:
+            chunk_id: The ID of the new chunk (must be exactly 4 ASCII characters)
+            chunk_data: The chunk data (raw bytes)
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            ValueError: If chunk_id is invalid or chunk already exists
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> parser.add_chunk('INFO', b'Artist: Example')
+            >>> parser.write_wav("modified.wav")
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        # Validate chunk_id
+        if len(chunk_id) != 4:
+            raise ValueError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
+
+        try:
+            chunk_id.encode('ascii')
+        except UnicodeEncodeError:
+            raise ValueError(f"Chunk ID must contain only ASCII characters: {chunk_id!r}")
+
+        if chunk_id in self.chunks:
+            raise ValueError(
+                f"Chunk '{chunk_id}' already exists. Use replace_chunk() to modify it."
+            )
+
+        # Add the new chunk
+        self.chunks[chunk_id] = WAVChunk(
+            id=chunk_id,
+            size=len(chunk_data),
+            data=chunk_data,
+            offset=0  # Will be calculated on write
+        )
+
+    def set_chunk(self, chunk_id: str, chunk_data: bytes) -> None:
+        """
+        Set a chunk's data, replacing it if it exists or adding it if it doesn't.
+
+        This is a convenience method that combines add_chunk and replace_chunk.
+
+        Args:
+            chunk_id: The ID of the chunk (must be exactly 4 ASCII characters)
+            chunk_data: The chunk data (raw bytes)
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            ValueError: If chunk_id is invalid
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> parser.set_chunk('INFO', b'Artist: Example')
+            >>> parser.write_wav("modified.wav")
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        # Validate chunk_id
+        if len(chunk_id) != 4:
+            raise ValueError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
+
+        try:
+            chunk_id.encode('ascii')
+        except UnicodeEncodeError:
+            raise ValueError(f"Chunk ID must contain only ASCII characters: {chunk_id!r}")
+
+        if chunk_id in self.chunks:
+            self.replace_chunk(chunk_id, chunk_data)
+        else:
+            self.add_chunk(chunk_id, chunk_data)
+
+    def copy_chunk_from_parser(self, chunk_id: str, source_parser: 'WAVParser') -> None:
+        """
+        Copy a chunk from another WAVParser instance.
+
+        Args:
+            chunk_id: The ID of the chunk to copy
+            source_parser: The source WAVParser instance to copy from
+
+        Raises:
+            WAVError: If either file hasn't been parsed yet
+            KeyError: If the chunk doesn't exist in the source parser
+
+        Example:
+            >>> parser1 = WAVParser("audio1.wav")
+            >>> parser1.parse()
+            >>> parser2 = WAVParser("audio2.wav")
+            >>> parser2.parse()
+            >>> parser2.copy_chunk_from_parser('data', parser1)
+            >>> parser2.write_wav("modified.wav")
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        if not source_parser.format_info:
+            raise WAVError("Source parser hasn't been parsed yet.")
+
+        if chunk_id not in source_parser.chunks:
+            available_chunks = ', '.join(source_parser.chunks.keys())
+            raise KeyError(
+                f"Chunk '{chunk_id}' not found in source. Available chunks: {available_chunks}"
+            )
+
+        source_chunk = source_parser.chunks[chunk_id]
+        self.set_chunk(chunk_id, source_chunk.data)
+
+    def write_wav(self, output_path: Union[str, Path], overwrite: bool = False) -> int:
+        """
+        Write the WAV file with all modifications to disk.
+
+        This method reconstructs the entire WAV file, properly updating all
+        chunk offsets and the RIFF file size.
+
+        Args:
+            output_path: Path where the WAV file will be written
+            overwrite: If True, allow overwriting the source file. Default is False
+                      for safety.
+
+        Returns:
+            Number of bytes written
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            FileExistsError: If output_path is the same as input and overwrite=False
+            InvalidWAVFormatError: If required chunks are missing
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.parse()
+            >>> parser.replace_chunk('data', new_audio_data)
+            >>> parser.write_wav("modified.wav")
+            176444
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        output_path = Path(output_path)
+
+        # Check if we're trying to overwrite the source file
+        if output_path.resolve() == self.file_path.resolve() and not overwrite:
+            raise FileExistsError(
+                f"Output path is the same as input file. "
+                f"Set overwrite=True to allow this operation."
+            )
+
+        # Ensure required chunks exist
+        if 'fmt ' not in self.chunks:
+            raise InvalidWAVFormatError("Cannot write WAV file without 'fmt ' chunk")
+
+        if 'data' not in self.chunks:
+            raise InvalidWAVFormatError("Cannot write WAV file without 'data' chunk")
+
+        # Calculate total file size
+        # RIFF header: 'RIFF' (4) + size (4) + 'WAVE' (4) = 12 bytes
+        # Each chunk: id (4) + size (4) + data + padding (if odd size)
+        chunks_size = 4  # 'WAVE' identifier
+
+        for chunk in self.chunks.values():
+            chunks_size += 8 + chunk.size  # header + data
+            if chunk.size % 2:  # Add padding for odd-sized chunks
+                chunks_size += 1
+
+        riff_size = chunks_size
+
+        # Write the file
+        bytes_written = 0
+        with open(output_path, 'wb') as f:
+            # Write RIFF header
+            f.write(b'RIFF')
+            f.write(struct.pack('<I', riff_size))
+            f.write(b'WAVE')
+            bytes_written += 12
+
+            # Write chunks in a consistent order: fmt first, then data, then others
+            chunk_order = []
+            if 'fmt ' in self.chunks:
+                chunk_order.append('fmt ')
+            if 'data' in self.chunks:
+                chunk_order.append('data')
+
+            # Add remaining chunks in sorted order for consistency
+            for chunk_id in sorted(self.chunks.keys()):
+                if chunk_id not in chunk_order:
+                    chunk_order.append(chunk_id)
+
+            for chunk_id in chunk_order:
+                chunk = self.chunks[chunk_id]
+
+                # Write chunk header
+                f.write(chunk_id.encode('ascii'))
+                f.write(struct.pack('<I', chunk.size))
+                bytes_written += 8
+
+                # Write chunk data
+                f.write(chunk.data)
+                bytes_written += chunk.size
+
+                # Write padding byte if needed
+                if chunk.size % 2:
+                    f.write(b'\x00')
+                    bytes_written += 1
+
+        return bytes_written

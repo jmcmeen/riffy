@@ -37,9 +37,9 @@ class TestMissingCoverage:
             f.write(struct.pack('<I', 4))
             f.write(b'\x00\x00\x00\x00')
 
-        parser = WAVParser(filepath)
         # Should parse successfully (the length check is defensive)
-        info = parser.parse()
+        parser = WAVParser(filepath)
+        info = parser.get_info()
         assert info is not None
 
     def test_non_pcm_format_with_invalid_cbsize(self, temp_wav_dir):
@@ -71,10 +71,9 @@ class TestMissingCoverage:
             f.write(struct.pack('<I', 4))
             f.write(b'\x00\x00\x00\x00')
 
-        parser = WAVParser(filepath)
         # Should raise error about format chunk size mismatch
         with pytest.raises(InvalidWAVFormatError, match="smaller than expected"):
-            parser.parse()
+            parser = WAVParser(filepath)
 
     def test_missing_format_chunk(self, temp_wav_dir):
         """Test WAV file without a format chunk."""
@@ -90,10 +89,9 @@ class TestMissingCoverage:
             f.write(struct.pack('<I', 4))
             f.write(b'\x00\x00\x00\x00')
 
-        parser = WAVParser(filepath)
         # Should raise error about missing format chunk
         with pytest.raises(InvalidWAVFormatError, match="No format chunk found"):
-            parser.parse()
+            parser = WAVParser(filepath)
 
     def test_sample_count_with_no_audio_data(self, temp_wav_dir):
         """Test sample count calculation when audio_data is None."""
@@ -110,10 +108,9 @@ class TestMissingCoverage:
             fmt_data = struct.pack('<HHIIHH', 1, 2, 44100, 176400, 4, 16)
             f.write(fmt_data)
 
-        parser = WAVParser(filepath)
         # Should fail validation (no data chunk)
         with pytest.raises(InvalidWAVFormatError):
-            parser.parse()
+            parser = WAVParser(filepath)
 
     def test_non_pcm_format_exact_size_match(self, temp_wav_dir):
         """Test non-PCM format with cbSize=2 and exactly 2 bytes of extension data."""
@@ -143,10 +140,9 @@ class TestMissingCoverage:
             f.write(struct.pack('<I', 4))
             f.write(b'\x00\x00\x00\x00')
 
-        parser = WAVParser(filepath)
         # Should parse format chunk successfully but fail validation (non-PCM)
         with pytest.raises(InvalidWAVFormatError, match="Unsupported audio format"):
-            parser.parse()
+            parser = WAVParser(filepath)
 
 
 class TestAdditionalEdgeCases:
@@ -172,7 +168,7 @@ class TestAdditionalEdgeCases:
             f.write(struct.pack('<I', 0))
 
         parser = WAVParser(filepath)
-        info = parser.parse()
+        info = parser.get_info()
 
         assert info['audio_data_size'] == 0
         assert info['sample_count'] == 0
@@ -187,7 +183,7 @@ class TestAdditionalEdgeCases:
         wav_info = create_wav_file(filepath, num_samples=441000)
 
         parser = WAVParser(filepath)
-        info = parser.parse()
+        info = parser.get_info()
 
         assert info['sample_count'] == 441000
         assert abs(info['duration_seconds'] - 10.0) < 0.01
@@ -200,7 +196,7 @@ class TestAdditionalEdgeCases:
         wav_info = create_wav_file(filepath)
 
         parser = WAVParser(filepath)
-        info = parser.parse()
+        info = parser.get_info()
 
         # 'fmt ' and 'data' should both be present
         assert 'fmt ' in info['chunks']
@@ -229,6 +225,6 @@ class TestAdditionalEdgeCases:
             )
 
             parser = WAVParser(filepath)
-            info = parser.parse()
+            info = parser.get_info()
 
             assert info['format']['byte_rate'] == expected_byte_rate

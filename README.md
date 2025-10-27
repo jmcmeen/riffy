@@ -50,11 +50,11 @@ pip install -e ".[dev]"
 ```python
 from riffy import WAVParser
 
-# Parse a WAV file
+# Parse a WAV file (parsing happens automatically on initialization)
 parser = WAVParser("audio.wav")
-info = parser.parse()
 
 # Access format information
+info = parser.get_info()
 print(f"Sample Rate: {info['format']['sample_rate']} Hz")
 print(f"Channels: {info['format']['channels']}")
 print(f"Bit Depth: {info['format']['bits_per_sample']} bits")
@@ -66,8 +66,8 @@ print(f"Duration: {info['duration_seconds']:.2f} seconds")
 ```python
 from riffy import WAVParser
 
+# Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
-parser.parse()
 
 # Access all chunks
 for chunk_id, chunk in parser.chunks.items():
@@ -84,8 +84,8 @@ if 'fmt ' in parser.chunks:
 ```python
 from riffy import WAVParser
 
+# Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
-parser.parse()
 
 # Access raw audio data
 audio_data = parser.audio_data
@@ -101,8 +101,8 @@ print(f"Total samples: {info['sample_count']}")
 ```python
 from riffy import WAVParser
 
+# Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
-parser.parse()
 
 # Export raw audio data (most common use case)
 bytes_written = parser.export_audio_data("raw_audio.bin")
@@ -129,8 +129,9 @@ for chunk_id in chunks.keys():
 from riffy import WAVParser
 import json
 
+# Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
-info = parser.parse()
+info = parser.get_info()
 
 # Pretty print all information
 print(json.dumps(info, indent=2))
@@ -177,25 +178,27 @@ WAVParser(file_path: Union[str, Path])
 
 - `file_path`: Path to the WAV file (string or `pathlib.Path`)
 
-#### Methods
+**Note:** The file is automatically parsed during initialization.
 
-##### `parse() -> Dict`
-
-Parse the WAV file and return comprehensive information.
-
-**Returns:** Dictionary containing file information, format details, and chunk data
-
-**Raises:**
+**Raises (during initialization):**
 
 - `FileNotFoundError`: If the file doesn't exist
 - `InvalidWAVFormatError`: If the file is not a valid WAV file
 - `CorruptedFileError`: If the file is corrupted or incomplete
 
+#### Methods
+
 ##### `get_info() -> Dict`
 
 Get comprehensive information about the parsed WAV file.
 
-**Returns:** Dictionary with file metadata (must call `parse()` first)
+**Returns:** Dictionary with file metadata
+
+##### `parse() -> Dict`
+
+Re-parse the WAV file and return comprehensive information. This method can be called to refresh the parser state, but is automatically called during initialization.
+
+**Returns:** Dictionary containing file information, format details, and chunk data
 
 ##### `export_chunk(chunk_id: str, output_path: Union[str, Path]) -> int`
 
@@ -210,7 +213,6 @@ Export a specific chunk's data to a binary file.
 
 **Raises:**
 
-- `WAVError`: If file hasn't been parsed yet
 - `KeyError`: If the specified chunk doesn't exist
 
 ##### `export_audio_data(output_path: Union[str, Path]) -> int`
@@ -225,17 +227,13 @@ Export raw audio data to a binary file (convenience method).
 
 **Raises:**
 
-- `WAVError`: If file hasn't been parsed yet or no audio data exists
+- `WAVError`: If no audio data exists
 
 ##### `list_chunks() -> Dict[str, Dict[str, int]]`
 
 List all chunks in the WAV file with their sizes and offsets.
 
 **Returns:** Dictionary mapping chunk IDs to their metadata (size and offset)
-
-**Raises:**
-
-- `WAVError`: If file hasn't been parsed yet
 
 #### Properties
 

@@ -67,7 +67,6 @@ class TestFullParsingWorkflow:
     def test_parser_state_after_parse(self, valid_pcm_wav):
         """Test parser state is correctly populated after parse."""
         parser = WAVParser(valid_pcm_wav['filepath'])
-        parser.parse()
 
         # Verify internal state
         assert parser.format_info is not None
@@ -197,7 +196,6 @@ class TestRealWorldScenarios:
     def test_extract_audio_data(self, valid_pcm_wav):
         """Test extracting audio data for processing."""
         parser = WAVParser(valid_pcm_wav['filepath'])
-        parser.parse()
 
         # Access audio data directly
         audio_data = parser.audio_data
@@ -208,7 +206,6 @@ class TestRealWorldScenarios:
     def test_access_format_info_directly(self, valid_pcm_wav):
         """Test accessing format info directly."""
         parser = WAVParser(valid_pcm_wav['filepath'])
-        parser.parse()
 
         # Access format info directly
         fmt = parser.format_info
@@ -219,7 +216,6 @@ class TestRealWorldScenarios:
     def test_access_chunks_directly(self, valid_pcm_wav):
         """Test accessing chunks directly."""
         parser = WAVParser(valid_pcm_wav['filepath'])
-        parser.parse()
 
         # Access chunks
         fmt_chunk = parser.chunks['fmt ']
@@ -232,7 +228,6 @@ class TestRealWorldScenarios:
     def test_calculate_duration_manually(self, valid_pcm_wav):
         """Test manual duration calculation from format info."""
         parser = WAVParser(valid_pcm_wav['filepath'])
-        parser.parse()
 
         # Calculate duration manually
         manual_duration = len(parser.audio_data) / parser.format_info.byte_rate

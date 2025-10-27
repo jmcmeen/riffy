@@ -30,7 +30,7 @@ def export_example() -> None:
     data_size = num_samples * channels * bits_per_sample // 8
 
     # Generate simple audio data (sine-like pattern)
-    audio_data = bytes([i % 256 for i in range(data_size)])
+    audio_data = bytes(i % 256 for i in range(data_size))
 
     # Write WAV file
     with open(wav_file, 'wb') as f:
@@ -57,7 +57,7 @@ def export_example() -> None:
 
     # ===== Parse the WAV file =====
     parser = WAVParser(wav_file)
-    info = parser.parse()
+    info = parser.get_info()
 
     print("WAV File Information:")
     print(f"  Sample Rate: {info['format']['sample_rate']} Hz")
@@ -160,7 +160,7 @@ def error_handling_example() -> None:
     print()
 
     # Parse the file
-    parser.parse()
+    parser.get_info()
 
     # Example 2: Export non-existent chunk
     print("2. Attempting to export non-existent chunk:")
