@@ -211,7 +211,7 @@ class WAVParser:
             Number of bytes written
 
         Raises:
-            WAVError: If file hasn't been parsed yet
+            WAVError: If file hasn't been parsed yet or file write errors occur
             KeyError: If the specified chunk doesn't exist
 
         Example:
@@ -232,8 +232,11 @@ class WAVParser:
         chunk = self.chunks[chunk_id]
         output_path = Path(output_path)
 
-        with open(output_path, 'wb') as f:
-            f.write(chunk.data)
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(chunk.data)
+        except OSError as e:
+            raise WAVError(f"Failed to write chunk to {output_path}: {e}") from e
 
         return len(chunk.data)
 
@@ -265,12 +268,7 @@ class WAVParser:
         if not self.audio_data:
             raise WAVError("No audio data available to export.")
 
-        output_path = Path(output_path)
-
-        with open(output_path, 'wb') as f:
-            f.write(self.audio_data)
-
-        return len(self.audio_data)
+        return self.export_chunk('data', output_path)
 
     def list_chunks(self) -> Dict[str, Dict[str, int]]:
         """
