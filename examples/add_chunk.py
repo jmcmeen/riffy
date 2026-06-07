@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""
+Example: add new metadata chunks to a WAV file.
+
+Demonstrates ``WAVParser.add_chunk()`` by attaching several INFO-style
+metadata chunks to an existing file, then writing and verifying them.
+"""
+
+import struct
+import tempfile
+from pathlib import Path
+
+from riffy import WAVParser
+
+
+def create_test_wav(filepath: Path, duration_seconds: float = 1.0) -> None:
+    """Create a simple PCM test WAV file (silence)."""
+    audio_format = 1
+    channels = 2
+    sample_rate = 44100
+    bits_per_sample = 16
+
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    num_samples = int(sample_rate * duration_seconds)
+    data_size = num_samples * channels * bits_per_sample // 8
+
+    audio_data = b"\x00" * data_size
+    fmt_chunk_data = struct.pack(
+        "<HHIIHH", audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample
+    )
+    riff_size = 4 + 8 + len(fmt_chunk_data) + 8 + data_size
+
+    with open(filepath, "wb") as f:
+        f.write(b"RIFF")
+        f.write(struct.pack("<I", riff_size))
+        f.write(b"WAVE")
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", len(fmt_chunk_data)))
+        f.write(fmt_chunk_data)
+        f.write(b"data")
+        f.write(struct.pack("<I", data_size))
+        f.write(audio_data)
+
+
+def main() -> None:
+    print("=" * 70)
+    print("RIFFY - Add metadata chunks")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        wav_path = tmpdir / "original.wav"
+        output_path = tmpdir / "with_metadata.wav"
+
+        create_test_wav(wav_path, duration_seconds=0.5)
+
+        parser = WAVParser(wav_path)
+        print(f"\nOriginal chunks: {list(parser.chunks.keys())}")
+
+        # Chunk IDs must be exactly 4 ASCII characters. add_chunk() raises if
+        # the chunk already exists (use set_chunk() for add-or-replace).
+        parser.add_chunk("INFO", b"Artist: Demo Artist\x00")
+        parser.add_chunk("ICMT", b"This is a comment\x00")
+        parser.add_chunk("ICOP", b"Copyright 2026\x00")
+        print(f"After adding:    {list(parser.chunks.keys())}")
+
+        parser.write_wav(output_path)
+        print(f"\nWrote {output_path.name}")
+
+        verify = WAVParser(output_path)
+        print(f"Verified chunks: {list(verify.chunks.keys())}")
+        print(f"INFO content:    {verify.chunks['INFO'].data}")
+        print("\n✓ Done")
+
+
+if __name__ == "__main__":
+    main()
