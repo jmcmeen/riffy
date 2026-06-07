@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-06-06
+
+A maintenance release covering documentation, examples, and CI dependencies.
+No library code or API changes.
+
+### Added
+- Focused, single-operation example scripts: `add_chunk.py`, `replace_chunk.py`,
+  `set_chunk.py`, `copy_chunk.py`, `overwrite_wav.py`, and `complete_workflow.py`,
+  plus an `examples/README.md` index.
+
+### Changed
+- Trimmed the inline API Reference from `README.md` in favor of the hosted
+  documentation site (<https://jmcmeen.github.io/riffy/>).
+- Bumped GitHub Actions versions: `actions/setup-python` 5→6,
+  `actions/configure-pages` 5→6, `actions/checkout` 4→6,
+  `actions/upload-pages-artifact` 3→5, and `actions/deploy-pages` 4→5.
+
+### Removed
+- The monolithic `examples/modify_chunks.py` script (split into the focused
+  examples above).
+
 ## [0.2.0] - 2026-06-06
 
 This release modernizes the project's tooling and packaging and includes a few
@@ -64,6 +85,7 @@ Python versions.
   chunk access, audio metadata extraction, a custom exception hierarchy, and
   full type hints. Zero external dependencies.
 
+[0.2.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jmcmeen/riffy/releases/tag/v0.2.0
 [0.1.2]: https://github.com/jmcmeen/riffy/releases/tag/v0.1.2
 [0.1.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.1.1
