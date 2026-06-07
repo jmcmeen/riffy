@@ -75,8 +75,10 @@ def main() -> None:
         new_audio = b"\xff\xfe" * 2000  # 4,000 bytes
         new_audio_path.write_bytes(new_audio)
         parser.replace_chunk("data", new_audio_path.read_bytes())
-        print(f"Replaced audio: {len(parser.audio_data):,} bytes "
-              f"({parser.format_info.duration_seconds:.2f} s)")
+        print(
+            f"Replaced audio: {len(parser.audio_data):,} bytes "
+            f"({parser.format_info.duration_seconds:.2f} s)"
+        )
 
         # 4. Attach metadata.
         parser.add_chunk("INFO", b"Processed audio\x00")

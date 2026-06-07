@@ -70,8 +70,10 @@ def main() -> None:
         # Opt in explicitly to overwrite in place.
         parser.write_wav(wav_path, overwrite=True)
         new_size = wav_path.stat().st_size
-        print(f"New file size:      {new_size:,} bytes "
-              f"(+{new_size - original_size:,} for the new chunk)")
+        print(
+            f"New file size:      {new_size:,} bytes "
+            f"(+{new_size - original_size:,} for the new chunk)"
+        )
 
         verify = WAVParser(wav_path)
         print(f"INFO chunk present: {'INFO' in verify.chunks}")
