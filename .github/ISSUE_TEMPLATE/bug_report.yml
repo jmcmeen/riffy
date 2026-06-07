@@ -1,0 +1,60 @@
+name: Bug Report
+description: Report a problem with riffy
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report! Please fill out the
+        sections below so we can reproduce and fix the issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I parse a WAV file with ..., riffy raises ... but I expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal code snippet that reproduces the problem.
+      render: python
+      placeholder: |
+        from riffy import WAVParser
+        parser = WAVParser("example.wav")
+        ...
+    validations:
+      required: true
+  - type: input
+    id: riffy-version
+    attributes:
+      label: riffy version
+      description: Output of `python -c "import riffy; print(riffy.__version__)"`
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04 / macOS 14 / Windows 11"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Traceback / logs
+      description: Paste the full traceback, if any.
+      render: shell
+    validations:
+      required: false
