@@ -20,7 +20,7 @@ Basic Usage:
     >>> print(f"Duration: {info['duration_seconds']:.2f} seconds")
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "John McMeen"
 
 # Import main classes and functions

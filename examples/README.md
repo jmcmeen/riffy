@@ -130,6 +130,66 @@ Export complete!
 
 ---
 
+### 3. Chunk Modification Examples
+
+Each script below demonstrates a single chunk-modification operation. They are
+fully self-contained: each creates its own test WAV file in a temporary
+directory, performs the operation, then re-parses the output to verify the
+result. Nothing is left behind on disk.
+
+| Script | Demonstrates |
+| --- | --- |
+| `replace_chunk.py` | Replacing an existing chunk's data (`replace_chunk()`), reading the new audio from a binary file. |
+| `add_chunk.py` | Adding new metadata chunks (`add_chunk()`) such as `INFO`, `ICMT`, `ICOP`. |
+| `set_chunk.py` | Add-or-replace with `set_chunk()` — first call adds, second replaces in place. |
+| `copy_chunk.py` | Copying chunks between files with `copy_chunk_from_parser()`. |
+| `overwrite_wav.py` | The `overwrite` guard on `write_wav()` — overwriting the source is refused unless `overwrite=True`. |
+| `complete_workflow.py` | A full pipeline: parse → back up audio → replace audio → add metadata → write → verify. |
+
+**Usage:**
+```bash
+python replace_chunk.py
+python add_chunk.py
+python set_chunk.py
+python copy_chunk.py
+python overwrite_wav.py
+python complete_workflow.py
+```
+
+**Output Example (`replace_chunk.py`):**
+```
+======================================================================
+RIFFY - Replace a chunk from a binary file
+======================================================================
+
+Created WAV:    original.wav
+Created binary: new_audio.bin (10,000 bytes)
+
+Original audio size: 176,400 bytes
+New audio size:      10,000 bytes
+
+Wrote 10,044 bytes to modified.wav
+Audio matches replacement: True
+
+✓ Done
+```
+
+---
+
+### 4. `practical_demo.py` - All Modifications in One Script
+
+A single script that bundles the chunk-modification operations above
+(replace, add, copy, overwrite, and a complete workflow) into one run, each
+against temporary files. Useful as a quick end-to-end smoke test of the
+modification API.
+
+**Usage:**
+```bash
+python practical_demo.py
+```
+
+---
+
 ## Running Examples
 
 ### Prerequisites
