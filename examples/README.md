@@ -190,11 +190,11 @@ Both examples create temporary files during execution:
 ```python
 from riffy import WAVParser
 
-# Create parser
+# Create parser (the file is parsed automatically on initialization)
 parser = WAVParser("audio.wav")
 
-# Parse the file
-info = parser.parse()
+# Get the parsed information
+info = parser.get_info()
 
 # Access information
 print(f"Sample Rate: {info['format']['sample_rate']} Hz")
@@ -206,9 +206,8 @@ print(f"Duration: {info['duration_seconds']:.2f} seconds")
 ```python
 from riffy import WAVParser
 
-# Parse file
+# Parse file (automatic on initialization)
 parser = WAVParser("audio.wav")
-parser.parse()
 
 # Export audio data (most common)
 parser.export_audio_data("output.bin")
@@ -225,7 +224,7 @@ from riffy import WAVParser, InvalidWAVFormatError, CorruptedFileError
 
 try:
     parser = WAVParser("audio.wav")
-    info = parser.parse()
+    info = parser.get_info()
     # Process file...
 except FileNotFoundError:
     print("File not found")
@@ -275,7 +274,7 @@ Both examples can be extended with additional processing:
 
 ```python
 # After parsing
-info = parser.parse()
+info = parser.get_info()
 
 # Calculate additional metrics
 duration_minutes = info['duration_seconds'] / 60

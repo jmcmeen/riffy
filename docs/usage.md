@@ -1,0 +1,68 @@
+# Usage
+
+## Parsing a WAV file
+
+The file is parsed automatically when you construct a `WAVParser`:
+
+```python
+from riffy import WAVParser
+
+parser = WAVParser("audio.wav")
+
+info = parser.get_info()
+print(f"Sample rate: {info['format']['sample_rate']} Hz")
+print(f"Channels:    {info['format']['channels']}")
+print(f"Bit depth:   {info['format']['bits_per_sample']} bits")
+print(f"Duration:    {info['duration_seconds']:.2f} s")
+```
+
+## Inspecting chunks
+
+```python
+for chunk_id, chunk in parser.chunks.items():
+    print(f"{chunk_id!r}: {chunk.size} bytes at offset {chunk.offset}")
+
+# Or get a lightweight summary:
+print(parser.list_chunks())
+```
+
+## Exporting data
+
+```python
+parser.export_audio_data("audio.bin")     # the raw 'data' chunk
+parser.export_chunk("fmt ", "format.bin")  # any chunk by ID
+```
+
+## Modifying and writing
+
+`WAVParser` can modify chunks in memory and write a valid WAV file back out:
+
+```python
+parser = WAVParser("audio.wav")
+
+parser.replace_chunk("data", new_audio_bytes)
+parser.add_chunk("INFO", b"Artist: Example\x00")   # IDs are 4 ASCII chars
+parser.set_chunk("NOTE", b"recorded 2026\x00")      # add or replace
+
+bytes_written = parser.write_wav("modified.wav")
+```
+
+!!! note
+    Calling `parse()` again re-reads the file from disk and discards any in-memory
+    modifications. `write_wav` orders chunks as `fmt `, `data`, then the rest sorted
+    by ID, so a parse/write round-trip is not guaranteed to be byte-identical.
+
+## Handling errors
+
+```python
+from riffy import WAVParser, RiffyError
+
+try:
+    parser = WAVParser("audio.wav")
+except RiffyError as e:
+    print(f"riffy could not handle this file: {e}")
+```
+
+See the [API Reference](api.md) for the full exception hierarchy and method
+signatures. For runnable scripts, see the
+[`examples/`](https://github.com/jmcmeen/riffy/tree/main/examples) directory.

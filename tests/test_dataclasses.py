@@ -1,6 +1,6 @@
 """Tests for WAVFormat and WAVChunk dataclasses."""
-import pytest
-from riffy import WAVFormat, WAVChunk
+
+from riffy import WAVChunk, WAVFormat
 
 
 class TestWAVFormat:
@@ -14,7 +14,7 @@ class TestWAVFormat:
             sample_rate=44100,
             byte_rate=176400,
             block_align=4,
-            bits_per_sample=16
+            bits_per_sample=16,
         )
 
         assert fmt.audio_format == 1
@@ -34,7 +34,7 @@ class TestWAVFormat:
             byte_rate=176400,
             block_align=4,
             bits_per_sample=16,
-            duration_seconds=5.5
+            duration_seconds=5.5,
         )
 
         assert fmt.duration_seconds == 5.5
@@ -47,7 +47,7 @@ class TestWAVFormat:
             sample_rate=44100,
             byte_rate=176400,
             block_align=4,
-            bits_per_sample=16
+            bits_per_sample=16,
         )
 
         assert fmt.is_pcm is True
@@ -60,7 +60,7 @@ class TestWAVFormat:
             sample_rate=8000,
             byte_rate=8000,
             block_align=1,
-            bits_per_sample=8
+            bits_per_sample=8,
         )
 
         assert fmt.is_pcm is False
@@ -68,11 +68,11 @@ class TestWAVFormat:
     def test_wav_format_various_formats(self):
         """Test WAVFormat with various audio formats."""
         formats = [
-            (1, True),   # PCM
+            (1, True),  # PCM
             (2, False),  # ADPCM
             (6, False),  # A-law
             (7, False),  # mu-law
-            (85, False), # MPEG
+            (85, False),  # MPEG
         ]
 
         for audio_format, expected_is_pcm in formats:
@@ -82,7 +82,7 @@ class TestWAVFormat:
                 sample_rate=44100,
                 byte_rate=176400,
                 block_align=4,
-                bits_per_sample=16
+                bits_per_sample=16,
             )
             assert fmt.is_pcm == expected_is_pcm
 
@@ -94,7 +94,7 @@ class TestWAVFormat:
             sample_rate=22050,
             byte_rate=44100,
             block_align=2,
-            bits_per_sample=16
+            bits_per_sample=16,
         )
 
         assert fmt.channels == 1
@@ -108,7 +108,7 @@ class TestWAVFormat:
             sample_rate=44100,
             byte_rate=88200,
             block_align=2,
-            bits_per_sample=8
+            bits_per_sample=8,
         )
 
         assert fmt.bits_per_sample == 8
@@ -122,7 +122,7 @@ class TestWAVFormat:
             sample_rate=48000,
             byte_rate=192000,
             block_align=4,
-            bits_per_sample=16
+            bits_per_sample=16,
         )
 
         assert fmt.sample_rate == 48000
@@ -135,7 +135,7 @@ class TestWAVFormat:
             sample_rate=44100,
             byte_rate=176400,
             block_align=4,
-            bits_per_sample=16
+            bits_per_sample=16,
         )
 
         # Dataclasses are mutable by default
@@ -148,54 +148,34 @@ class TestWAVChunk:
 
     def test_wav_chunk_initialization(self):
         """Test basic WAVChunk initialization."""
-        chunk = WAVChunk(
-            id='fmt ',
-            size=16,
-            data=b'\x01\x00\x02\x00\x44\xac\x00\x00',
-            offset=12
-        )
+        chunk = WAVChunk(id="fmt ", size=16, data=b"\x01\x00\x02\x00\x44\xac\x00\x00", offset=12)
 
-        assert chunk.id == 'fmt '
+        assert chunk.id == "fmt "
         assert chunk.size == 16
-        assert chunk.data == b'\x01\x00\x02\x00\x44\xac\x00\x00'
+        assert chunk.data == b"\x01\x00\x02\x00\x44\xac\x00\x00"
         assert chunk.offset == 12
 
     def test_wav_chunk_data_chunk(self):
         """Test WAVChunk for data chunk."""
-        audio_data = b'\x00\x01\x02\x03' * 100
-        chunk = WAVChunk(
-            id='data',
-            size=len(audio_data),
-            data=audio_data,
-            offset=44
-        )
+        audio_data = b"\x00\x01\x02\x03" * 100
+        chunk = WAVChunk(id="data", size=len(audio_data), data=audio_data, offset=44)
 
-        assert chunk.id == 'data'
+        assert chunk.id == "data"
         assert chunk.size == 400
         assert len(chunk.data) == 400
 
     def test_wav_chunk_empty_data(self):
         """Test WAVChunk with empty data."""
-        chunk = WAVChunk(
-            id='JUNK',
-            size=0,
-            data=b'',
-            offset=100
-        )
+        chunk = WAVChunk(id="JUNK", size=0, data=b"", offset=100)
 
-        assert chunk.id == 'JUNK'
+        assert chunk.id == "JUNK"
         assert chunk.size == 0
-        assert chunk.data == b''
+        assert chunk.data == b""
 
     def test_wav_chunk_custom_chunks(self):
         """Test WAVChunk with various custom chunk IDs."""
-        chunk_ids = ['LIST', 'INFO', 'JUNK', 'cue ', 'plst']
+        chunk_ids = ["LIST", "INFO", "JUNK", "cue ", "plst"]
 
         for chunk_id in chunk_ids:
-            chunk = WAVChunk(
-                id=chunk_id,
-                size=10,
-                data=b'\x00' * 10,
-                offset=0
-            )
+            chunk = WAVChunk(id=chunk_id, size=10, data=b"\x00" * 10, offset=0)
             assert chunk.id == chunk_id

@@ -1,8 +1,10 @@
 """Pytest configuration and fixtures for riffy tests."""
+
 import struct
-import pytest
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
+import pytest
 
 
 @pytest.fixture
@@ -26,7 +28,7 @@ def create_wav_file(
     corrupt_wave: bool = False,
     invalid_chunk_id: bytes = None,
     truncate_chunk: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a WAV file with specified parameters for testing.
 
@@ -43,13 +45,7 @@ def create_wav_file(
 
     # Build format chunk
     fmt_chunk_data = struct.pack(
-        '<HHIIHH',
-        audio_format,
-        channels,
-        sample_rate,
-        byte_rate,
-        block_align,
-        bits_per_sample
+        "<HHIIHH", audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample
     )
     fmt_chunk_data += extra_fmt_data
     fmt_chunk_size = len(fmt_chunk_data)
@@ -68,19 +64,19 @@ def create_wav_file(
     riff_size = chunks_size
 
     # Write the WAV file
-    with open(filepath, 'wb') as f:
+    with open(filepath, "wb") as f:
         # RIFF header
-        riff_id = b'JUNK' if corrupt_riff else b'RIFF'
+        riff_id = b"JUNK" if corrupt_riff else b"RIFF"
         f.write(riff_id)
-        f.write(struct.pack('<I', riff_size))
+        f.write(struct.pack("<I", riff_size))
 
-        wave_id = b'JUNK' if corrupt_wave else b'WAVE'
+        wave_id = b"JUNK" if corrupt_wave else b"WAVE"
         f.write(wave_id)
 
         # Format chunk
-        chunk_id = invalid_chunk_id or b'fmt '
+        chunk_id = invalid_chunk_id or b"fmt "
         f.write(chunk_id)
-        f.write(struct.pack('<I', fmt_chunk_size))
+        f.write(struct.pack("<I", fmt_chunk_size))
 
         if truncate_chunk:
             # Write incomplete chunk data
@@ -89,28 +85,28 @@ def create_wav_file(
             f.write(fmt_chunk_data)
             # Padding if odd size
             if fmt_chunk_size % 2:
-                f.write(b'\x00')
+                f.write(b"\x00")
 
         # Data chunk
         if include_data_chunk and not truncate_chunk:
-            f.write(b'data')
-            f.write(struct.pack('<I', data_size))
+            f.write(b"data")
+            f.write(struct.pack("<I", data_size))
             f.write(audio_data)
             # Padding if odd size
             if data_size % 2:
-                f.write(b'\x00')
+                f.write(b"\x00")
 
     return {
-        'filepath': filepath,
-        'audio_format': audio_format,
-        'channels': channels,
-        'sample_rate': sample_rate,
-        'byte_rate': byte_rate,
-        'block_align': block_align,
-        'bits_per_sample': bits_per_sample,
-        'data_size': data_size,
-        'num_samples': num_samples,
-        'duration_seconds': num_samples / sample_rate if sample_rate > 0 else 0.0,
+        "filepath": filepath,
+        "audio_format": audio_format,
+        "channels": channels,
+        "sample_rate": sample_rate,
+        "byte_rate": byte_rate,
+        "block_align": block_align,
+        "bits_per_sample": bits_per_sample,
+        "data_size": data_size,
+        "num_samples": num_samples,
+        "duration_seconds": num_samples / sample_rate if sample_rate > 0 else 0.0,
     }
 
 
@@ -155,7 +151,7 @@ def non_pcm_wav_valid(temp_wav_dir):
     """Create a non-PCM WAV file with valid extended format data."""
     filepath = temp_wav_dir / "non_pcm_valid.wav"
     # Format 7 (mu-law) with cbSize=0
-    extra_data = struct.pack('<H', 0)  # cbSize = 0
+    extra_data = struct.pack("<H", 0)  # cbSize = 0
     return create_wav_file(filepath, audio_format=7, extra_fmt_data=extra_data)
 
 
@@ -184,7 +180,7 @@ def no_data_chunk_wav(temp_wav_dir):
 def invalid_chunk_id_wav(temp_wav_dir):
     """Create a WAV file with non-ASCII chunk ID."""
     filepath = temp_wav_dir / "invalid_chunk_id.wav"
-    return create_wav_file(filepath, invalid_chunk_id=b'\xff\xff\xff\xff')
+    return create_wav_file(filepath, invalid_chunk_id=b"\xff\xff\xff\xff")
 
 
 @pytest.fixture
@@ -198,9 +194,9 @@ def truncated_chunk_wav(temp_wav_dir):
 def tiny_wav(temp_wav_dir):
     """Create a WAV file that's too small to be valid."""
     filepath = temp_wav_dir / "tiny.wav"
-    with open(filepath, 'wb') as f:
-        f.write(b'RIFF\x00\x00')  # Only 6 bytes
-    return {'filepath': filepath}
+    with open(filepath, "wb") as f:
+        f.write(b"RIFF\x00\x00")  # Only 6 bytes
+    return {"filepath": filepath}
 
 
 @pytest.fixture
