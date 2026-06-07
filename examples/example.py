@@ -3,10 +3,11 @@
 Example usage of the riffy library for parsing WAV files.
 """
 
-from riffy import WAVParser, InvalidWAVFormatError, CorruptedFileError
 import json
 import struct
 from pathlib import Path
+
+from riffy import CorruptedFileError, InvalidWAVFormatError, WAVParser
 
 
 def create_sample_wav(filepath: str = "example.wav") -> str:
@@ -24,23 +25,24 @@ def create_sample_wav(filepath: str = "example.wav") -> str:
     audio_data = bytes([i % 256 for i in range(data_size)])
 
     # Write WAV file
-    with open(filepath, 'wb') as f:
+    with open(filepath, "wb") as f:
         # RIFF header
-        f.write(b'RIFF')
+        f.write(b"RIFF")
         chunks_size = 4 + 8 + 16 + 8 + data_size
-        f.write(struct.pack('<I', chunks_size))
-        f.write(b'WAVE')
+        f.write(struct.pack("<I", chunks_size))
+        f.write(b"WAVE")
 
         # Format chunk
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))
-        fmt_data = struct.pack('<HHIIHH', 1, channels, sample_rate,
-                               byte_rate, block_align, bits_per_sample)
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", 16))
+        fmt_data = struct.pack(
+            "<HHIIHH", 1, channels, sample_rate, byte_rate, block_align, bits_per_sample
+        )
         f.write(fmt_data)
 
         # Data chunk
-        f.write(b'data')
-        f.write(struct.pack('<I', data_size))
+        f.write(b"data")
+        f.write(struct.pack("<I", data_size))
         f.write(audio_data)
 
     return filepath
@@ -88,7 +90,7 @@ def main():
 
         # Display chunks
         print("\nRIFF Chunks:")
-        for chunk_id, chunk_size in info['chunks'].items():
+        for chunk_id, chunk_size in info["chunks"].items():
             print(f"  {chunk_id!r}: {chunk_size:,} bytes")
 
         # Example 2: Access raw data

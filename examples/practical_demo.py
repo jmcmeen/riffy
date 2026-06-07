@@ -6,8 +6,9 @@ This script creates test WAV files and demonstrates real modifications.
 """
 
 import struct
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 from riffy.wav import WAVParser
 
 
@@ -25,28 +26,26 @@ def create_test_wav(filepath: Path, duration_seconds: float = 1.0) -> None:
     data_size = num_samples * channels * bits_per_sample // 8
 
     # Create simple audio data (silence)
-    audio_data = b'\x00' * data_size
+    audio_data = b"\x00" * data_size
 
     # Build format chunk
     fmt_chunk_data = struct.pack(
-        '<HHIIHH',
-        audio_format, channels, sample_rate,
-        byte_rate, block_align, bits_per_sample
+        "<HHIIHH", audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample
     )
 
     # Calculate total size
     riff_size = 4 + 8 + len(fmt_chunk_data) + 8 + data_size
 
     # Write the file
-    with open(filepath, 'wb') as f:
-        f.write(b'RIFF')
-        f.write(struct.pack('<I', riff_size))
-        f.write(b'WAVE')
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', len(fmt_chunk_data)))
+    with open(filepath, "wb") as f:
+        f.write(b"RIFF")
+        f.write(struct.pack("<I", riff_size))
+        f.write(b"WAVE")
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", len(fmt_chunk_data)))
         f.write(fmt_chunk_data)
-        f.write(b'data')
-        f.write(struct.pack('<I', data_size))
+        f.write(b"data")
+        f.write(struct.pack("<I", data_size))
         f.write(audio_data)
 
     print(f"Created test WAV file: {filepath} ({duration_seconds}s)")
@@ -69,8 +68,8 @@ def demo_replace_with_binary():
         create_test_wav(wav_path, duration_seconds=1.0)
 
         # Create binary file with new audio data
-        new_audio_data = b'\x01\x02' * 5000  # 10000 bytes
-        with open(binary_path, 'wb') as f:
+        new_audio_data = b"\x01\x02" * 5000  # 10000 bytes
+        with open(binary_path, "wb") as f:
             f.write(new_audio_data)
         print(f"Created binary file: {binary_path} ({len(new_audio_data)} bytes)")
 
@@ -80,8 +79,8 @@ def demo_replace_with_binary():
         print(f"Original audio size: {len(parser.audio_data)} bytes")
 
         # Replace with binary data
-        with open(binary_path, 'rb') as f:
-            parser.replace_chunk('data', f.read())
+        with open(binary_path, "rb") as f:
+            parser.replace_chunk("data", f.read())
 
         print(f"New audio size: {len(parser.audio_data)} bytes")
 
@@ -117,9 +116,9 @@ def demo_add_metadata():
         print(f"Original chunks: {list(parser.chunks.keys())}")
 
         # Add various metadata chunks
-        parser.add_chunk('INFO', b'Artist: Demo Artist\x00')
-        parser.add_chunk('ICMT', b'This is a comment\x00')
-        parser.add_chunk('ICOP', b'Copyright 2024\x00')
+        parser.add_chunk("INFO", b"Artist: Demo Artist\x00")
+        parser.add_chunk("ICMT", b"This is a comment\x00")
+        parser.add_chunk("ICOP", b"Copyright 2024\x00")
 
         print(f"After adding chunks: {list(parser.chunks.keys())}")
 
@@ -155,7 +154,7 @@ def demo_copy_between_files():
         # Parse both
         source = WAVParser(source_path)
         source
-        source.add_chunk('INFO', b'Source metadata\x00')
+        source.add_chunk("INFO", b"Source metadata\x00")
 
         destination = WAVParser(dest_path)
         destination
@@ -164,11 +163,11 @@ def demo_copy_between_files():
         print(f"Destination audio size: {len(destination.audio_data)} bytes")
 
         # Copy audio from source to destination
-        destination.copy_chunk_from_parser('data', source)
+        destination.copy_chunk_from_parser("data", source)
         print(f"After copy, destination audio size: {len(destination.audio_data)} bytes")
 
         # Also copy the metadata chunk
-        destination.copy_chunk_from_parser('INFO', source)
+        destination.copy_chunk_from_parser("INFO", source)
 
         # Write modified destination
         destination.write_wav(output_path)
@@ -203,7 +202,7 @@ def demo_overwrite_original():
         print(f"Original file size: {original_size} bytes")
 
         # Add metadata
-        parser.add_chunk('INFO', b'Modified\x00')
+        parser.add_chunk("INFO", b"Modified\x00")
 
         # Try to overwrite without flag (should fail)
         try:
@@ -246,7 +245,7 @@ def demo_complete_workflow():
         parser = WAVParser(original_path)
         info = parser.get_info()
 
-        print(f"\nOriginal file info:")
+        print("\nOriginal file info:")
         print(f"  Size: {info['file_size']} bytes")
         print(f"  Duration: {info['duration_seconds']:.2f} seconds")
         print(f"  Channels: {info['format']['channels']}")
@@ -257,20 +256,20 @@ def demo_complete_workflow():
         print(f"\nBacked up audio data to {backup_path}")
 
         # Create new audio data (shorter)
-        new_audio = b'\xFF\xFE' * 2000  # 4000 bytes
-        with open(new_audio_path, 'wb') as f:
+        new_audio = b"\xff\xfe" * 2000  # 4000 bytes
+        with open(new_audio_path, "wb") as f:
             f.write(new_audio)
 
         # Replace audio
-        with open(new_audio_path, 'rb') as f:
-            parser.replace_chunk('data', f.read())
+        with open(new_audio_path, "rb") as f:
+            parser.replace_chunk("data", f.read())
 
         print(f"\nReplaced audio: {len(parser.audio_data)} bytes")
         print(f"New duration: {parser.format_info.duration_seconds:.2f} seconds")
 
         # Add metadata
-        parser.add_chunk('INFO', b'Processed audio\x00')
-        parser.add_chunk('ISFT', b'riffy library\x00')
+        parser.add_chunk("INFO", b"Processed audio\x00")
+        parser.add_chunk("ISFT", b"riffy library\x00")
 
         # Write output
         bytes_written = parser.write_wav(output_path)
@@ -278,9 +277,9 @@ def demo_complete_workflow():
 
         # Verify
         verify = WAVParser(output_path)
-        verify_info = verify
+        verify_info = verify.get_info()
 
-        print(f"\nOutput file verification:")
+        print("\nOutput file verification:")
         print(f"  Chunks: {list(verify.chunks.keys())}")
         print(f"  Audio matches: {verify.audio_data == new_audio}")
         print(f"  Duration: {verify_info['duration_seconds']:.2f} seconds")

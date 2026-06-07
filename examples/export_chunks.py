@@ -9,7 +9,8 @@ This example shows:
 """
 
 from pathlib import Path
-from riffy import WAVParser
+
+from riffy import MissingChunkError, WAVParser
 
 
 def export_example() -> None:
@@ -33,23 +34,24 @@ def export_example() -> None:
     audio_data = bytes(i % 256 for i in range(data_size))
 
     # Write WAV file
-    with open(wav_file, 'wb') as f:
+    with open(wav_file, "wb") as f:
         # RIFF header
-        f.write(b'RIFF')
+        f.write(b"RIFF")
         chunks_size = 4 + 8 + 16 + 8 + data_size
-        f.write(struct.pack('<I', chunks_size))
-        f.write(b'WAVE')
+        f.write(struct.pack("<I", chunks_size))
+        f.write(b"WAVE")
 
         # Format chunk
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))
-        fmt_data = struct.pack('<HHIIHH', 1, channels, sample_rate,
-                               byte_rate, block_align, bits_per_sample)
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", 16))
+        fmt_data = struct.pack(
+            "<HHIIHH", 1, channels, sample_rate, byte_rate, block_align, bits_per_sample
+        )
         f.write(fmt_data)
 
         # Data chunk
-        f.write(b'data')
-        f.write(struct.pack('<I', data_size))
+        f.write(b"data")
+        f.write(struct.pack("<I", data_size))
         f.write(audio_data)
 
     print(f"Created example WAV file: {wav_file}")
@@ -76,12 +78,12 @@ def export_example() -> None:
 
     # ===== Export format chunk =====
     fmt_file = Path("format_chunk.bin")
-    fmt_bytes = parser.export_chunk('fmt ', fmt_file)
+    fmt_bytes = parser.export_chunk("fmt ", fmt_file)
     print(f"Exported format chunk: {fmt_bytes} bytes → {fmt_file}")
 
     # ===== Export data chunk (method 1: using export_chunk) =====
     data_file_1 = Path("audio_data_v1.bin")
-    data_bytes_1 = parser.export_chunk('data', data_file_1)
+    data_bytes_1 = parser.export_chunk("data", data_file_1)
     print(f"Exported data chunk: {data_bytes_1:,} bytes → {data_file_1}")
 
     # ===== Export audio data (method 2: using convenience method) =====
@@ -91,9 +93,9 @@ def export_example() -> None:
     print()
 
     # ===== Verify both methods produce identical results =====
-    with open(data_file_1, 'rb') as f:
+    with open(data_file_1, "rb") as f:
         content_1 = f.read()
-    with open(data_file_2, 'rb') as f:
+    with open(data_file_2, "rb") as f:
         content_2 = f.read()
 
     if content_1 == content_2:
@@ -107,7 +109,7 @@ def export_example() -> None:
 
     for chunk_id in chunks.keys():
         # Create safe filename from chunk ID
-        safe_name = chunk_id.strip().replace(' ', '_')
+        safe_name = chunk_id.strip().replace(" ", "_")
         output_file = export_dir / f"{safe_name}.bin"
 
         bytes_written = parser.export_chunk(chunk_id, output_file)
@@ -130,24 +132,25 @@ def export_example() -> None:
 
 def error_handling_example() -> None:
     """Demonstrate error handling in export operations."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Error Handling Examples")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     # Create a simple WAV file
     import struct
+
     wav_file = Path("test.wav")
 
-    with open(wav_file, 'wb') as f:
-        f.write(b'RIFF')
-        f.write(struct.pack('<I', 36))
-        f.write(b'WAVE')
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))
-        f.write(struct.pack('<HHIIHH', 1, 2, 44100, 176400, 4, 16))
-        f.write(b'data')
-        f.write(struct.pack('<I', 4))
-        f.write(b'\x00\x00\x00\x00')
+    with open(wav_file, "wb") as f:
+        f.write(b"RIFF")
+        f.write(struct.pack("<I", 36))
+        f.write(b"WAVE")
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", 16))
+        f.write(struct.pack("<HHIIHH", 1, 2, 44100, 176400, 4, 16))
+        f.write(b"data")
+        f.write(struct.pack("<I", 4))
+        f.write(b"\x00\x00\x00\x00")
 
     parser = WAVParser(wav_file)
 
@@ -165,8 +168,8 @@ def error_handling_example() -> None:
     # Example 2: Export non-existent chunk
     print("2. Attempting to export non-existent chunk:")
     try:
-        parser.export_chunk('JUNK', "output.bin")
-    except KeyError as e:
+        parser.export_chunk("JUNK", "output.bin")
+    except MissingChunkError as e:
         print(f"   Error: {e}")
     print()
 

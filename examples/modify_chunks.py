@@ -9,9 +9,6 @@ This script shows how to:
 4. Write modified WAV files while maintaining integrity
 """
 
-from pathlib import Path
-from riffy.wav import WAVParser
-
 
 def example_replace_chunk_from_binary():
     """Replace a chunk with data from a binary file."""
@@ -139,7 +136,9 @@ def example_complete_workflow():
     print("# Parse the original file")
     print("parser = WAVParser('original.wav')")
     print("info = parser.get_info()")
-    print("print(f'Loaded WAV: {info[\"file_size\"]} bytes, {info[\"duration_seconds\"]:.2f} seconds')")
+    print(
+        'print(f\'Loaded WAV: {info["file_size"]} bytes, {info["duration_seconds"]:.2f} seconds\')'
+    )
     print()
 
     print("# Export the current audio data as backup")
@@ -169,7 +168,9 @@ def example_complete_workflow():
     print("# Verify the output")
     print("verify = WAVParser(output_path)")
     print("verify")
-    print("print(f'Verification: {len(verify.audio_data)} bytes audio, {len(verify.chunks)} chunks')")
+    print(
+        "print(f'Verification: {len(verify.audio_data)} bytes audio, {len(verify.chunks)} chunks')"
+    )
     print("print(f'Chunks: {list(verify.chunks.keys())}')")
     print()
 
