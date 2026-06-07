@@ -4,106 +4,87 @@ Comprehensive test suite for the riffy RIFF/WAV parser library.
 
 ## Test Coverage
 
-Current test coverage: **98%**
+Current test coverage: **100%**
 
-- Total tests: **87**
+- Total tests: **144**
 - All tests passing ✓
 
 ## Test Structure
 
 ```
 tests/
-├── conftest.py              # Pytest fixtures and WAV file generators
-├── test_dataclasses.py      # Tests for WAVFormat and WAVChunk dataclasses
-├── test_exceptions.py       # Tests for exception hierarchy and handling
-├── test_parser.py           # Tests for WAVParser functionality
-├── test_integration.py      # Integration tests for complete workflows
-└── test_edge_cases.py       # Edge cases and coverage completion tests
+├── conftest.py                  # Pytest fixtures and WAV file generators
+├── test_dataclasses.py          # Tests for WAVFormat and WAVChunk dataclasses
+├── test_exceptions.py           # Tests for exception hierarchy and handling
+├── test_parser.py               # Tests for WAVParser parsing functionality
+├── test_export.py               # Tests for chunk/audio export and list_chunks
+├── test_chunk_modification.py   # Tests for add/replace/set/copy/write_wav
+├── test_integration.py          # Integration tests for complete workflows
+└── test_edge_cases.py           # Edge cases, defensive guards, coverage
 ```
 
 ## Running Tests
 
 ### Run all tests
 ```bash
-pytest tests/
+pytest
 ```
 
 ### Run with verbose output
 ```bash
-pytest tests/ -v
+pytest -v
 ```
 
 ### Run with coverage report
 ```bash
-pytest tests/ --cov=src/riffy --cov-report=term-missing
+pytest --cov=riffy --cov-report=term-missing
 ```
 
 ### Run with HTML coverage report
 ```bash
-pytest tests/ --cov=src/riffy --cov-report=html
+pytest --cov=riffy --cov-report=html
 # Open htmlcov/index.html in your browser
 ```
 
-### Run specific test file
+### Run specific test file / class / test
 ```bash
 pytest tests/test_parser.py
-```
-
-### Run specific test class
-```bash
 pytest tests/test_parser.py::TestWAVParserInitialization
-```
-
-### Run specific test
-```bash
 pytest tests/test_parser.py::TestWAVParserInitialization::test_init_with_string_path
 ```
 
 ## Test Categories
 
-### 1. Dataclass Tests (`test_dataclasses.py`)
-- **WAVFormat**: Initialization, properties (is_pcm), various audio formats
+### Dataclass Tests (`test_dataclasses.py`) — 13 tests
+
+- **WAVFormat**: Initialization, `is_pcm` property, various audio formats
 - **WAVChunk**: Initialization, data handling, custom chunks
 
-**13 tests** covering all dataclass functionality.
+### Exception Tests (`test_exceptions.py`) — 16 tests
 
-### 2. Exception Tests (`test_exceptions.py`)
-- Exception hierarchy validation
-- Exception message handling
-- Exception catching patterns
-- Inheritance verification
+- Exception hierarchy validation, messages, catching patterns, inheritance
 
-**16 tests** ensuring proper exception handling.
+### Parser Tests (`test_parser.py`) — 30 tests
 
-### 3. Parser Tests (`test_parser.py`)
-- Parser initialization (string/Path objects)
-- RIFF header parsing
-- Chunk parsing
-- Format chunk parsing (PCM and non-PCM)
-- Duration calculation
-- Validation methods
-- Sample count calculation
+- Initialization (string/Path), RIFF header, chunk parsing, format chunk
+  (PCM/non-PCM), duration, validation, sample count
 
-**30 tests** covering core parsing functionality.
+### Export Tests (`test_export.py`) — 21 tests
 
-### 4. Integration Tests (`test_integration.py`)
-- Complete parsing workflows
-- Parser state verification
-- Multiple parses
-- Edge cases (various sample rates, bit depths, channels)
-- Real-world usage scenarios
+- `export_chunk`, `export_audio_data`, `list_chunks`, and export workflows
 
-**18 tests** ensuring end-to-end functionality.
+### Chunk Modification Tests (`test_chunk_modification.py`) — 30 tests
 
-### 5. Edge Case Tests (`test_edge_cases.py`)
-- Non-PCM format validation
-- Missing chunks
-- Invalid chunk IDs
-- Empty audio data
-- Large audio files
-- Byte rate calculations
+- `replace_chunk`, `add_chunk`, `set_chunk`, `copy_chunk_from_parser`, `write_wav`
 
-**9 tests** for edge cases and additional coverage.
+### Integration Tests (`test_integration.py`) — 19 tests
+
+- End-to-end workflows, parser state, re-parse behavior, real-world scenarios
+
+### Edge Case Tests (`test_edge_cases.py`) — 15 tests
+
+- Missing/invalid/truncated chunks, empty/large audio, defensive guards, and
+  rarely-hit error paths (export OSError wrapping, unparsed-state guards)
 
 ## Test Fixtures
 
@@ -131,78 +112,49 @@ The test suite includes comprehensive fixtures in `conftest.py`:
 
 ## Code Coverage Details
 
-### Covered Modules
 | Module | Statements | Missing | Coverage |
 |--------|-----------|---------|----------|
 | `src/riffy/__init__.py` | 5 | 0 | 100% |
 | `src/riffy/exceptions.py` | 16 | 0 | 100% |
-| `src/riffy/wav.py` | 109 | 2 | 98% |
-| **TOTAL** | **130** | **2** | **98%** |
+| `src/riffy/wav.py` | 211 | 0 | 100% |
+| **TOTAL** | **232** | **0** | **100%** |
 
-### Uncovered Lines
-Two defensive checks that are difficult to trigger in practice:
-- Line 87: Chunk ID length validation (struct always returns 4 bytes)
-- Line 114: Non-PCM format cbSize check (covered by other validation)
+One defensive line in `wav.py` (the chunk-ID length check, unreachable because
+`struct.unpack('<4s')` always yields exactly four bytes) is marked
+`# pragma: no cover`.
 
-## Test Categories by Functionality
+## Continuous Integration
 
-### Parsing Success Cases
-- Valid PCM files (various formats)
-- Different sample rates (8kHz - 96kHz)
-- Different bit depths (8, 16, 24, 32 bits)
-- Different channel counts (1-8 channels)
-- Empty audio data
-- Large audio files
-
-### Error Cases
-- Corrupt RIFF/WAVE headers
-- Missing chunks (fmt, data)
-- Invalid chunk IDs (non-ASCII)
-- Truncated chunks
-- Zero channels/sample rate
-- Non-PCM formats
-- Files too small
-
-### Edge Cases
-- Odd-sized chunks (padding)
-- Very short audio (1 sample)
-- Multiple parses of same file
-- Direct access to parser internals
+Tests run on every push and pull request via GitHub Actions across Python
+3.10–3.14. Tests are designed to:
+- Run fast (~1 second for the full suite)
+- Be deterministic (no random failures)
+- Clean up temporary files (via `tmp_path`)
+- Work on all platforms (Linux, macOS, Windows)
+- Require no external dependencies
 
 ## Adding New Tests
 
-To add new tests:
-
-1. Choose appropriate test file based on category
-2. Create test class if needed
-3. Write descriptive test name starting with `test_`
+1. Choose the appropriate test file based on category
+2. Create a test class if needed
+3. Write a descriptive test name starting with `test_`
 4. Use fixtures from `conftest.py` or create new ones
-5. Add assertions with clear error messages
-6. Run tests to verify
+5. Run tests to verify
 
 Example:
 ```python
 def test_new_feature(valid_pcm_wav):
     """Test description."""
-    parser = WAVParser(valid_pcm_wav['filepath'])
-    info = parser.parse()
-    assert info['new_field'] == expected_value
+    parser = WAVParser(valid_pcm_wav["filepath"])
+    info = parser.get_info()
+    assert info["new_field"] == expected_value
 ```
-
-## Continuous Integration
-
-Tests are designed to:
-- Run fast (< 1 second for full suite)
-- Be deterministic (no random failures)
-- Clean up temporary files
-- Work on all platforms (Linux, macOS, Windows)
-- Require no external dependencies
 
 ## Maintenance
 
 When modifying the library:
-1. Run full test suite before committing
-2. Add tests for new features
-3. Update tests for changed behavior
-4. Maintain coverage above 95%
-5. Update this README if test structure changes
+1. Run the full test suite before committing
+2. Add tests for new features and changed behavior
+3. Keep `ruff check`, `ruff format --check`, and `mypy` clean
+4. Maintain coverage at/near 100%
+5. Update this README if the test structure changes

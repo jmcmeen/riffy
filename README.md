@@ -1,15 +1,22 @@
 # riffy
 
-Riffy provides a pure Python implementation for working with RIFF format files, with initial support for WAV audio files. The library is designed to have **zero external dependencies** while providing robust parsing capabilities for managing RIFF chunks.
+[![PyPI version](https://img.shields.io/pypi/v/riffy.svg)](https://pypi.org/project/riffy/)
+[![Python versions](https://img.shields.io/pypi/pyversions/riffy.svg)](https://pypi.org/project/riffy/)
+[![CI](https://github.com/jmcmeen/riffy/actions/workflows/ci.yml/badge.svg)](https://github.com/jmcmeen/riffy/actions/workflows/ci.yml)
+[![Docs](https://github.com/jmcmeen/riffy/actions/workflows/docs.yml/badge.svg)](https://jmcmeen.github.io/riffy/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Riffy provides a pure Python implementation for working with RIFF format files, with initial support for WAV audio files. The library is designed to have **zero external dependencies** while providing robust parsing capabilities for reading, modifying, and writing RIFF chunks.
 
 ## Features
 
 - **Zero Dependencies**: Pure Python implementation with no external dependencies
 - **WAV File Support**: Complete WAV file parsing with format validation
-- **RIFF Chunk Management**: Access and inspect individual RIFF chunks
+- **RIFF Chunk Management**: Access, add, replace, copy, and remove RIFF chunks
+- **Chunk Modification & Writing**: Modify chunks in memory and write valid WAV files back to disk
 - **Audio Metadata Extraction**: Extract sample rate, channels, bit depth, and duration
 - **Format Validation**: Automatic validation of file format and integrity
-- **Type Safety**: Full type hints for better IDE support and code quality
+- **Type Safety**: Full type hints (PEP 561 `py.typed`) for better IDE support and static analysis
 - **Lightweight**: Minimal footprint, perfect for embedded systems or restricted environments
 
 ## Installation
@@ -116,12 +123,38 @@ parser.export_chunk('data', "data_chunk.bin")
 chunks = parser.list_chunks()
 for chunk_id, info in chunks.items():
     print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
-
-# Export all chunks
-for chunk_id in chunks.keys():
-    filename = f"{chunk_id.strip()}_chunk.bin"
-    parser.export_chunk(chunk_id, filename)
 ```
+
+### Modifying and Writing WAV Files
+
+Riffy can modify chunks in memory and write a valid WAV file back to disk:
+
+```python
+from riffy import WAVParser
+
+parser = WAVParser("audio.wav")
+
+# Replace the audio data with new bytes
+parser.replace_chunk('data', new_audio_bytes)
+
+# Add a custom metadata chunk (IDs must be exactly 4 ASCII characters)
+parser.add_chunk('INFO', b'Artist: Example\x00')
+
+# set_chunk adds the chunk if missing, or replaces it if present
+parser.set_chunk('NOTE', b'recorded 2026\x00')
+
+# Copy a chunk from another file
+other = WAVParser("other.wav")
+parser.copy_chunk_from_parser('data', other)
+
+# Write the modified file (overwrite=False refuses to clobber the source)
+bytes_written = parser.write_wav("modified.wav")
+print(f"Wrote {bytes_written} bytes")
+```
+
+> **Note:** `write_wav` always writes the `fmt ` chunk first, then `data`, then any
+> remaining chunks in sorted order, so the output is not guaranteed to be byte-for-byte
+> identical to the input. See [Limitations](#limitations).
 
 ### Getting Detailed File Information
 
@@ -164,6 +197,9 @@ Output example:
 
 ## API Reference
 
+> Full, auto-generated API documentation is available at
+> **<https://jmcmeen.github.io/riffy/>**.
+
 ### WAVParser
 
 The main class for parsing WAV files.
@@ -171,7 +207,7 @@ The main class for parsing WAV files.
 #### Constructor
 
 ```python
-WAVParser(file_path: Union[str, Path])
+WAVParser(file_path: str | Path)
 ```
 
 **Parameters:**
@@ -184,56 +220,85 @@ WAVParser(file_path: Union[str, Path])
 
 - `FileNotFoundError`: If the file doesn't exist
 - `InvalidWAVFormatError`: If the file is not a valid WAV file
+- `UnsupportedFormatError`: If the audio format is not PCM
 - `CorruptedFileError`: If the file is corrupted or incomplete
+- `MissingChunkError`: If a required (`fmt `/`data`) chunk is absent
+- `InvalidChunkError`: If a chunk ID is not valid 4-character ASCII
 
 #### Methods
 
-##### `get_info() -> Dict`
+##### `get_info() -> dict`
 
 Get comprehensive information about the parsed WAV file.
 
 **Returns:** Dictionary with file metadata
 
-##### `parse() -> Dict`
+##### `parse() -> dict`
 
-Re-parse the WAV file and return comprehensive information. This method can be called to refresh the parser state, but is automatically called during initialization.
+Re-parse the WAV file and return comprehensive information. The file is parsed
+automatically during initialization; calling `parse()` again re-reads the file
+from disk and **discards any in-memory modifications** made with `add_chunk`,
+`replace_chunk`, or `set_chunk`.
 
 **Returns:** Dictionary containing file information, format details, and chunk data
 
-##### `export_chunk(chunk_id: str, output_path: Union[str, Path]) -> int`
+##### `export_chunk(chunk_id: str, output_path: str | Path) -> int`
 
 Export a specific chunk's data to a binary file.
 
-**Parameters:**
+**Returns:** Number of bytes written
 
-- `chunk_id`: The ID of the chunk to export (e.g., 'fmt ', 'data')
-- `output_path`: Path where the chunk data will be written
+**Raises:** `MissingChunkError` if the specified chunk doesn't exist
+
+##### `export_audio_data(output_path: str | Path) -> int`
+
+Export raw audio data (the `data` chunk) to a binary file. Convenience wrapper
+around `export_chunk('data', ...)`.
 
 **Returns:** Number of bytes written
 
-**Raises:**
+**Raises:** `WAVError` if no audio data exists
 
-- `KeyError`: If the specified chunk doesn't exist
+##### `list_chunks() -> dict[str, dict[str, int]]`
 
-##### `export_audio_data(output_path: Union[str, Path]) -> int`
-
-Export raw audio data to a binary file (convenience method).
-
-**Parameters:**
-
-- `output_path`: Path where the audio data will be written
-
-**Returns:** Number of bytes written
-
-**Raises:**
-
-- `WAVError`: If no audio data exists
-
-##### `list_chunks() -> Dict[str, Dict[str, int]]`
-
-List all chunks in the WAV file with their sizes and offsets.
+List all chunks with their sizes and offsets.
 
 **Returns:** Dictionary mapping chunk IDs to their metadata (size and offset)
+
+##### `replace_chunk(chunk_id: str, new_data: bytes) -> None`
+
+Replace an existing chunk's data with new data. Replacing the `data` chunk
+recalculates the duration.
+
+**Raises:** `MissingChunkError` if the chunk doesn't exist
+
+##### `add_chunk(chunk_id: str, chunk_data: bytes) -> None`
+
+Add a new chunk. The chunk ID must be exactly 4 ASCII characters.
+
+**Raises:** `InvalidChunkError` if the ID is malformed; `ValueError` if the chunk already exists
+
+##### `set_chunk(chunk_id: str, chunk_data: bytes) -> None`
+
+Add the chunk if it doesn't exist, or replace it if it does.
+
+**Raises:** `InvalidChunkError` if the ID is malformed
+
+##### `copy_chunk_from_parser(chunk_id: str, source_parser: WAVParser) -> None`
+
+Copy a chunk from another `WAVParser` instance.
+
+**Raises:** `MissingChunkError` if the chunk doesn't exist in the source parser
+
+##### `write_wav(output_path: str | Path, overwrite: bool = False) -> int`
+
+Reconstruct and write the (possibly modified) WAV file to disk, updating the RIFF
+size and chunk layout.
+
+**Returns:** Number of bytes written
+
+**Raises:** `FileExistsError` if writing over the source without `overwrite=True`;
+`MissingChunkError` if the required `fmt `/`data` chunks are missing
 
 #### Properties
 
@@ -253,11 +318,11 @@ Dataclass containing WAV format information.
 - `byte_rate`: Bytes per second
 - `block_align`: Block alignment in bytes
 - `bits_per_sample`: Bits per sample
+- `duration_seconds`: Audio duration in seconds (computed during parsing)
 
 **Properties:**
 
 - `is_pcm`: Boolean indicating if format is PCM (uncompressed)
-- `duration_seconds`: Audio duration in seconds
 
 ### WAVChunk
 
@@ -272,7 +337,7 @@ Dataclass representing a RIFF chunk.
 
 ## Exception Hierarchy
 
-```
+```text
 RiffyError (base exception)
 ├── WAVError
 │   ├── InvalidWAVFormatError
@@ -286,44 +351,61 @@ RiffyError (base exception)
 ### Exception Handling
 
 ```python
-from riffy import WAVParser, InvalidWAVFormatError, CorruptedFileError
+from riffy import (
+    WAVParser,
+    InvalidWAVFormatError,
+    UnsupportedFormatError,
+    CorruptedFileError,
+    MissingChunkError,
+)
 
 try:
     parser = WAVParser("audio.wav")
-    info = parser.parse()
 except InvalidWAVFormatError as e:
     print(f"Invalid WAV format: {e}")
+except UnsupportedFormatError as e:
+    print(f"Unsupported audio format: {e}")
 except CorruptedFileError as e:
     print(f"File is corrupted: {e}")
+except MissingChunkError as e:
+    print(f"Required chunk missing: {e}")
 except FileNotFoundError:
     print("File not found")
 ```
+
+All riffy exceptions inherit from `RiffyError`, so `except RiffyError` catches every
+library-specific error.
 
 ## Supported Formats
 
 Currently, Riffy supports:
 
 - **WAV Files**: PCM (uncompressed) audio only
-- **RIFF Chunks**: Standard chunk parsing for any RIFF file
+- **RIFF Chunks**: Standard chunk parsing, modification, and writing for WAV files
 
 ### Planned Support
 
 - AVI files
 - WebP images
 - Additional WAV compression formats
-- RIFF chunk writing/modification
+
+## Limitations
+
+- **PCM only**: Non-PCM (compressed) WAV files are rejected with `UnsupportedFormatError`.
+- **Unique chunk IDs**: `chunks` is keyed by chunk ID, so files containing multiple
+  chunks with the same ID (e.g. several `LIST` chunks) keep only the last one.
+- **Chunk ordering on write**: `write_wav` emits `fmt ` then `data` then remaining
+  chunks sorted by ID, so a parse/write round-trip may not be byte-for-byte identical.
 
 ## Requirements
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - No external dependencies!
 
 ## Development
 
-### Running Tests
-
 ```bash
-# Install development dependencies
+# Install with development dependencies
 pip install -e ".[dev]"
 
 # Run tests
@@ -331,27 +413,28 @@ pytest
 
 # Run tests with coverage
 pytest --cov=riffy --cov-report=html
+
+# Lint and format with Ruff
+ruff check .
+ruff format .
+
+# Type-check with mypy
+mypy
 ```
 
-### Code Formatting
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor guide.
+
+### Building the Docs
 
 ```bash
-# Format code with black
-black src/
-
-# Lint with ruff
-ruff check src/
+pip install -e ".[docs]"
+mkdocs serve   # preview locally at http://127.0.0.1:8000
 ```
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
+opening a pull request.
 
 ## License
 
@@ -359,13 +442,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### Version 0.1.0 (Initial Release)
-
-- Pure Python WAV file parser
-- RIFF chunk management
-- Zero external dependencies
-- Full type hints
-- Comprehensive error handling
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## References
 
