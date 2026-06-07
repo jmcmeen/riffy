@@ -1,13 +1,22 @@
 import struct
-from typing import Dict, Optional, Union
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
-from .exceptions import WAVError, InvalidWAVFormatError, CorruptedFileError
+from .exceptions import (
+    CorruptedFileError,
+    InvalidChunkError,
+    InvalidWAVFormatError,
+    MissingChunkError,
+    UnsupportedFormatError,
+    WAVError,
+)
+
 
 @dataclass
 class WAVFormat:
     """WAV format information."""
+
     audio_format: int
     channels: int
     sample_rate: int
@@ -25,6 +34,7 @@ class WAVFormat:
 @dataclass
 class WAVChunk:
     """Represents a RIFF chunk in the WAV file."""
+
     id: str
     size: int
     data: bytes
@@ -34,89 +44,96 @@ class WAVChunk:
 class WAVParser:
     """Pure Python WAV file parser."""
 
-    def __init__(self, file_path: Union[str, Path]):
+    def __init__(self, file_path: str | Path):
         """Initialize parser with file path and automatically parse the file."""
         self.file_path = Path(file_path)
-        self.format_info: Optional[WAVFormat] = None
-        self.chunks: Dict[str, WAVChunk] = {}
-        self.audio_data: Optional[bytes] = None
+        self.format_info: WAVFormat | None = None
+        self.chunks: dict[str, WAVChunk] = {}
+        self.audio_data: bytes | None = None
         self._file_size = 0
 
         # Automatically parse the file on initialization
         self.parse()
 
-    def parse(self) -> Dict:
-        """Parse the WAV file and return comprehensive information."""
+    def parse(self) -> dict:
+        """Parse the WAV file and return comprehensive information.
+
+        Re-parsing re-reads the file from disk and discards any in-memory
+        modifications previously made via ``add_chunk``, ``replace_chunk``,
+        or ``set_chunk``.
+        """
         if not self.file_path.exists():
             raise FileNotFoundError(f"WAV file not found: {self.file_path}")
-        
+
+        # Reset state so re-parsing reflects the file on disk, not prior edits.
+        self.format_info = None
+        self.chunks = {}
+        self.audio_data = None
+
         self._file_size = self.file_path.stat().st_size
-        
-        with open(self.file_path, 'rb') as f:
+
+        with open(self.file_path, "rb") as f:
             self._parse_riff_header(f)
             self._parse_chunks(f)
             self._calculate_duration()
             self._validate_format()
-        
+
         return self.get_info()
-    
-    def _parse_riff_header(self, f) -> None:
+
+    def _parse_riff_header(self, f: BinaryIO) -> None:
         """Parse the RIFF header."""
         riff_header = f.read(12)
         if len(riff_header) != 12:
             raise CorruptedFileError("File too small to be a valid WAV file")
-        
-        riff_id, file_size, wave_id = struct.unpack('<4sI4s', riff_header)
-        
-        if riff_id != b'RIFF':
+
+        riff_id, file_size, wave_id = struct.unpack("<4sI4s", riff_header)
+
+        if riff_id != b"RIFF":
             raise InvalidWAVFormatError("Not a valid RIFF file")
-        
-        if wave_id != b'WAVE':
+
+        if wave_id != b"WAVE":
             raise InvalidWAVFormatError("Not a valid WAV file")
-    
-    def _parse_chunks(self, f) -> None:
+
+    def _parse_chunks(self, f: BinaryIO) -> None:
         """Parse all chunks in the WAV file."""
         while True:
             chunk_header = f.read(8)
             if len(chunk_header) < 8:
                 break
 
-            chunk_id, chunk_size = struct.unpack('<4sI', chunk_header)
+            chunk_id, chunk_size = struct.unpack("<4sI", chunk_header)
 
             # Decode chunk ID with strict ASCII validation
             try:
-                chunk_id = chunk_id.decode('ascii')
-                if len(chunk_id) != 4:
-                    raise CorruptedFileError(f"Invalid chunk ID length: {len(chunk_id)}")
+                chunk_id = chunk_id.decode("ascii")
             except UnicodeDecodeError as e:
-                raise CorruptedFileError(f"Invalid chunk ID (non-ASCII bytes): {chunk_id!r}") from e
-            
+                raise InvalidChunkError(f"Invalid chunk ID (non-ASCII bytes): {chunk_id!r}") from e
+            if len(chunk_id) != 4:  # pragma: no cover - defensive; 4 bytes always decode to 4 chars
+                raise InvalidChunkError(f"Invalid chunk ID length: {len(chunk_id)}")
+
             chunk_offset = f.tell()
             chunk_data = f.read(chunk_size)
             if len(chunk_data) != chunk_size:
                 raise CorruptedFileError(f"Incomplete chunk: {chunk_id}")
-            
+
             self.chunks[chunk_id] = WAVChunk(
-                id=chunk_id,
-                size=chunk_size,
-                data=chunk_data,
-                offset=chunk_offset
+                id=chunk_id, size=chunk_size, data=chunk_data, offset=chunk_offset
             )
-            
-            if chunk_id == 'fmt ':
+
+            if chunk_id == "fmt ":
                 self._parse_format_chunk(chunk_data)
-            elif chunk_id == 'data':
+            elif chunk_id == "data":
                 self.audio_data = chunk_data
-            
+
             if chunk_size % 2:
                 f.read(1)
-    
+
     def _parse_format_chunk(self, data: bytes) -> None:
         """Parse the format chunk."""
         if len(data) < 16:
             raise InvalidWAVFormatError("Format chunk too small")
 
-        fmt_data = struct.unpack('<HHIIHH', data[:16])
+        fmt_data = struct.unpack("<HHIIHH", data[:16])
         audio_format = fmt_data[0]
 
         # Non-PCM formats have extra fields (cbSize + extension data)
@@ -127,7 +144,7 @@ class WAVParser:
 
         # For non-PCM formats, read cbSize to validate extension data
         if audio_format != 1:
-            cb_size = struct.unpack('<H', data[16:18])[0]
+            cb_size = struct.unpack("<H", data[16:18])[0]
             expected_size = 18 + cb_size
             if len(data) < expected_size:
                 raise InvalidWAVFormatError(
@@ -141,59 +158,58 @@ class WAVParser:
             sample_rate=fmt_data[2],
             byte_rate=fmt_data[3],
             block_align=fmt_data[4],
-            bits_per_sample=fmt_data[5]
+            bits_per_sample=fmt_data[5],
         )
-    
+
     def _calculate_duration(self) -> None:
         """Calculate audio duration after all chunks are parsed."""
         if self.audio_data and self.format_info and self.format_info.byte_rate > 0:
             self.format_info.duration_seconds = len(self.audio_data) / self.format_info.byte_rate
-    
+
     def _validate_format(self) -> None:
         """Validate the parsed format."""
         if not self.format_info:
-            raise InvalidWAVFormatError("No format chunk found")
-        
+            raise MissingChunkError("No 'fmt ' chunk found")
+
         if not self.format_info.is_pcm:
-            raise InvalidWAVFormatError(
-                f"Unsupported audio format: {self.format_info.audio_format} "
-                "(only PCM is supported)"
+            raise UnsupportedFormatError(
+                f"Unsupported audio format: {self.format_info.audio_format} (only PCM is supported)"
             )
-        
+
         if self.format_info.channels == 0:
             raise InvalidWAVFormatError("Invalid number of channels")
-        
+
         if self.format_info.sample_rate == 0:
             raise InvalidWAVFormatError("Invalid sample rate")
-        
+
         if self.audio_data is None:
-            raise InvalidWAVFormatError("No audio data found")
-    
-    def get_info(self) -> Dict:
+            raise MissingChunkError("No 'data' chunk found")
+
+    def get_info(self) -> dict:
         """Get comprehensive information about the WAV file."""
         if not self.format_info:
             raise WAVError("File not parsed yet. Call parse() first.")
-        
+
         info = {
-            'file_path': str(self.file_path),
-            'file_size': self._file_size,
-            'format': {
-                'audio_format': self.format_info.audio_format,
-                'channels': self.format_info.channels,
-                'sample_rate': self.format_info.sample_rate,
-                'byte_rate': self.format_info.byte_rate,
-                'block_align': self.format_info.block_align,
-                'bits_per_sample': self.format_info.bits_per_sample,
-                'is_pcm': self.format_info.is_pcm
+            "file_path": str(self.file_path),
+            "file_size": self._file_size,
+            "format": {
+                "audio_format": self.format_info.audio_format,
+                "channels": self.format_info.channels,
+                "sample_rate": self.format_info.sample_rate,
+                "byte_rate": self.format_info.byte_rate,
+                "block_align": self.format_info.block_align,
+                "bits_per_sample": self.format_info.bits_per_sample,
+                "is_pcm": self.format_info.is_pcm,
             },
-            'duration_seconds': self.format_info.duration_seconds,
-            'audio_data_size': len(self.audio_data) if self.audio_data else 0,
-            'sample_count': self._calculate_sample_count(),
-            'chunks': {chunk_id: chunk.size for chunk_id, chunk in self.chunks.items()}
+            "duration_seconds": self.format_info.duration_seconds,
+            "audio_data_size": len(self.audio_data) if self.audio_data else 0,
+            "sample_count": self._calculate_sample_count(),
+            "chunks": {chunk_id: chunk.size for chunk_id, chunk in self.chunks.items()},
         }
-        
+
         return info
-    
+
     def _calculate_sample_count(self) -> int:
         """Calculate total number of samples."""
         if not self.audio_data or not self.format_info:
@@ -202,7 +218,7 @@ class WAVParser:
         bytes_per_sample = self.format_info.bits_per_sample // 8
         return len(self.audio_data) // (bytes_per_sample * self.format_info.channels)
 
-    def export_chunk(self, chunk_id: str, output_path: Union[str, Path]) -> int:
+    def export_chunk(self, chunk_id: str, output_path: str | Path) -> int:
         """
         Export a specific chunk's data to a binary file.
 
@@ -215,11 +231,10 @@ class WAVParser:
 
         Raises:
             WAVError: If file hasn't been parsed yet or file write errors occur
-            KeyError: If the specified chunk doesn't exist
+            MissingChunkError: If the specified chunk doesn't exist
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> parser.export_chunk('data', 'audio_data.bin')
             176400
         """
@@ -227,8 +242,8 @@ class WAVParser:
             raise WAVError("File not parsed yet. Call parse() first.")
 
         if chunk_id not in self.chunks:
-            available_chunks = ', '.join(self.chunks.keys())
-            raise KeyError(
+            available_chunks = ", ".join(self.chunks.keys())
+            raise MissingChunkError(
                 f"Chunk '{chunk_id}' not found. Available chunks: {available_chunks}"
             )
 
@@ -236,14 +251,14 @@ class WAVParser:
         output_path = Path(output_path)
 
         try:
-            with open(output_path, 'wb') as f:
+            with open(output_path, "wb") as f:
                 f.write(chunk.data)
         except OSError as e:
             raise WAVError(f"Failed to write chunk to {output_path}: {e}") from e
 
         return len(chunk.data)
 
-    def export_audio_data(self, output_path: Union[str, Path]) -> int:
+    def export_audio_data(self, output_path: str | Path) -> int:
         """
         Export raw audio data to a binary file (convenience method).
 
@@ -261,7 +276,6 @@ class WAVParser:
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> parser.export_audio_data('raw_audio.bin')
             176400
         """
@@ -271,9 +285,9 @@ class WAVParser:
         if not self.audio_data:
             raise WAVError("No audio data available to export.")
 
-        return self.export_chunk('data', output_path)
+        return self.export_chunk("data", output_path)
 
-    def list_chunks(self) -> Dict[str, Dict[str, int]]:
+    def list_chunks(self) -> dict[str, dict[str, int]]:
         """
         List all chunks in the WAV file with their sizes and offsets.
 
@@ -285,7 +299,6 @@ class WAVParser:
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> chunks = parser.list_chunks()
             >>> print(chunks)
             {'fmt ': {'size': 16, 'offset': 12}, 'data': {'size': 176400, 'offset': 36}}
@@ -294,10 +307,7 @@ class WAVParser:
             raise WAVError("File not parsed yet. Call parse() first.")
 
         return {
-            chunk_id: {
-                'size': chunk.size,
-                'offset': chunk.offset
-            }
+            chunk_id: {"size": chunk.size, "offset": chunk.offset}
             for chunk_id, chunk in self.chunks.items()
         }
 
@@ -311,11 +321,10 @@ class WAVParser:
 
         Raises:
             WAVError: If file hasn't been parsed yet
-            KeyError: If the specified chunk doesn't exist
+            MissingChunkError: If the specified chunk doesn't exist
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> with open("new_data.bin", "rb") as f:
             ...     parser.replace_chunk('data', f.read())
             >>> parser.write_wav("modified.wav")
@@ -324,8 +333,8 @@ class WAVParser:
             raise WAVError("File not parsed yet. Call parse() first.")
 
         if chunk_id not in self.chunks:
-            available_chunks = ', '.join(self.chunks.keys())
-            raise KeyError(
+            available_chunks = ", ".join(self.chunks.keys())
+            raise MissingChunkError(
                 f"Chunk '{chunk_id}' not found. Available chunks: {available_chunks}"
             )
 
@@ -335,11 +344,11 @@ class WAVParser:
             id=chunk_id,
             size=len(new_data),
             data=new_data,
-            offset=old_chunk.offset  # Offset will be recalculated on write
+            offset=old_chunk.offset,  # Offset will be recalculated on write
         )
 
         # Update audio_data if this is the data chunk
-        if chunk_id == 'data':
+        if chunk_id == "data":
             self.audio_data = new_data
             self._calculate_duration()
 
@@ -353,11 +362,11 @@ class WAVParser:
 
         Raises:
             WAVError: If file hasn't been parsed yet
-            ValueError: If chunk_id is invalid or chunk already exists
+            InvalidChunkError: If chunk_id is not exactly 4 ASCII characters
+            ValueError: If the chunk already exists
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> parser.add_chunk('INFO', b'Artist: Example')
             >>> parser.write_wav("modified.wav")
         """
@@ -366,12 +375,14 @@ class WAVParser:
 
         # Validate chunk_id
         if len(chunk_id) != 4:
-            raise ValueError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
+            raise InvalidChunkError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
 
         try:
-            chunk_id.encode('ascii')
-        except UnicodeEncodeError:
-            raise ValueError(f"Chunk ID must contain only ASCII characters: {chunk_id!r}")
+            chunk_id.encode("ascii")
+        except UnicodeEncodeError as e:
+            raise InvalidChunkError(
+                f"Chunk ID must contain only ASCII characters: {chunk_id!r}"
+            ) from e
 
         if chunk_id in self.chunks:
             raise ValueError(
@@ -383,7 +394,7 @@ class WAVParser:
             id=chunk_id,
             size=len(chunk_data),
             data=chunk_data,
-            offset=0  # Will be calculated on write
+            offset=0,  # Will be calculated on write
         )
 
     def set_chunk(self, chunk_id: str, chunk_data: bytes) -> None:
@@ -398,11 +409,10 @@ class WAVParser:
 
         Raises:
             WAVError: If file hasn't been parsed yet
-            ValueError: If chunk_id is invalid
+            InvalidChunkError: If chunk_id is not exactly 4 ASCII characters
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> parser.set_chunk('INFO', b'Artist: Example')
             >>> parser.write_wav("modified.wav")
         """
@@ -411,19 +421,21 @@ class WAVParser:
 
         # Validate chunk_id
         if len(chunk_id) != 4:
-            raise ValueError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
+            raise InvalidChunkError(f"Chunk ID must be exactly 4 characters, got {len(chunk_id)}")
 
         try:
-            chunk_id.encode('ascii')
-        except UnicodeEncodeError:
-            raise ValueError(f"Chunk ID must contain only ASCII characters: {chunk_id!r}")
+            chunk_id.encode("ascii")
+        except UnicodeEncodeError as e:
+            raise InvalidChunkError(
+                f"Chunk ID must contain only ASCII characters: {chunk_id!r}"
+            ) from e
 
         if chunk_id in self.chunks:
             self.replace_chunk(chunk_id, chunk_data)
         else:
             self.add_chunk(chunk_id, chunk_data)
 
-    def copy_chunk_from_parser(self, chunk_id: str, source_parser: 'WAVParser') -> None:
+    def copy_chunk_from_parser(self, chunk_id: str, source_parser: "WAVParser") -> None:
         """
         Copy a chunk from another WAVParser instance.
 
@@ -433,13 +445,11 @@ class WAVParser:
 
         Raises:
             WAVError: If either file hasn't been parsed yet
-            KeyError: If the chunk doesn't exist in the source parser
+            MissingChunkError: If the chunk doesn't exist in the source parser
 
         Example:
             >>> parser1 = WAVParser("audio1.wav")
-            >>> parser1.parse()
             >>> parser2 = WAVParser("audio2.wav")
-            >>> parser2.parse()
             >>> parser2.copy_chunk_from_parser('data', parser1)
             >>> parser2.write_wav("modified.wav")
         """
@@ -450,15 +460,15 @@ class WAVParser:
             raise WAVError("Source parser hasn't been parsed yet.")
 
         if chunk_id not in source_parser.chunks:
-            available_chunks = ', '.join(source_parser.chunks.keys())
-            raise KeyError(
+            available_chunks = ", ".join(source_parser.chunks.keys())
+            raise MissingChunkError(
                 f"Chunk '{chunk_id}' not found in source. Available chunks: {available_chunks}"
             )
 
         source_chunk = source_parser.chunks[chunk_id]
         self.set_chunk(chunk_id, source_chunk.data)
 
-    def write_wav(self, output_path: Union[str, Path], overwrite: bool = False) -> int:
+    def write_wav(self, output_path: str | Path, overwrite: bool = False) -> int:
         """
         Write the WAV file with all modifications to disk.
 
@@ -476,11 +486,10 @@ class WAVParser:
         Raises:
             WAVError: If file hasn't been parsed yet
             FileExistsError: If output_path is the same as input and overwrite=False
-            InvalidWAVFormatError: If required chunks are missing
+            MissingChunkError: If required chunks are missing
 
         Example:
             >>> parser = WAVParser("audio.wav")
-            >>> parser.parse()
             >>> parser.replace_chunk('data', new_audio_data)
             >>> parser.write_wav("modified.wav")
             176444
@@ -493,16 +502,15 @@ class WAVParser:
         # Check if we're trying to overwrite the source file
         if output_path.resolve() == self.file_path.resolve() and not overwrite:
             raise FileExistsError(
-                f"Output path is the same as input file. "
-                f"Set overwrite=True to allow this operation."
+                "Output path is the same as input file. Set overwrite=True to allow this operation."
             )
 
         # Ensure required chunks exist
-        if 'fmt ' not in self.chunks:
-            raise InvalidWAVFormatError("Cannot write WAV file without 'fmt ' chunk")
+        if "fmt " not in self.chunks:
+            raise MissingChunkError("Cannot write WAV file without 'fmt ' chunk")
 
-        if 'data' not in self.chunks:
-            raise InvalidWAVFormatError("Cannot write WAV file without 'data' chunk")
+        if "data" not in self.chunks:
+            raise MissingChunkError("Cannot write WAV file without 'data' chunk")
 
         # Calculate total file size
         # RIFF header: 'RIFF' (4) + size (4) + 'WAVE' (4) = 12 bytes
@@ -518,19 +526,19 @@ class WAVParser:
 
         # Write the file
         bytes_written = 0
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             # Write RIFF header
-            f.write(b'RIFF')
-            f.write(struct.pack('<I', riff_size))
-            f.write(b'WAVE')
+            f.write(b"RIFF")
+            f.write(struct.pack("<I", riff_size))
+            f.write(b"WAVE")
             bytes_written += 12
 
             # Write chunks in a consistent order: fmt first, then data, then others
             chunk_order = []
-            if 'fmt ' in self.chunks:
-                chunk_order.append('fmt ')
-            if 'data' in self.chunks:
-                chunk_order.append('data')
+            if "fmt " in self.chunks:
+                chunk_order.append("fmt ")
+            if "data" in self.chunks:
+                chunk_order.append("data")
 
             # Add remaining chunks in sorted order for consistency
             for chunk_id in sorted(self.chunks.keys()):
@@ -541,8 +549,8 @@ class WAVParser:
                 chunk = self.chunks[chunk_id]
 
                 # Write chunk header
-                f.write(chunk_id.encode('ascii'))
-                f.write(struct.pack('<I', chunk.size))
+                f.write(chunk_id.encode("ascii"))
+                f.write(struct.pack("<I", chunk.size))
                 bytes_written += 8
 
                 # Write chunk data
@@ -551,7 +559,7 @@ class WAVParser:
 
                 # Write padding byte if needed
                 if chunk.size % 2:
-                    f.write(b'\x00')
+                    f.write(b"\x00")
                     bytes_written += 1
 
         return bytes_written
