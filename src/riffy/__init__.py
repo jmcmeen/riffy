@@ -14,27 +14,27 @@ Main Features:
 
 Basic Usage:
     >>> from riffy import WAVParser
-    >>> parser = WAVParser("audio.wav")
-    >>> info = parser.parse()
+    >>> parser = WAVParser("audio.wav")  # file is parsed on initialization
+    >>> info = parser.get_info()
     >>> print(f"Sample rate: {info['format']['sample_rate']} Hz")
     >>> print(f"Duration: {info['duration_seconds']:.2f} seconds")
 """
 
-__version__ = "0.1.0"
-__author__ = "John"
+__version__ = "0.2.0"
+__author__ = "John McMeen"
 
 # Import main classes and functions
-from .wav import WAVParser, WAVFormat, WAVChunk
 from .exceptions import (
-    RiffyError,
-    WAVError,
-    InvalidWAVFormatError,
-    CorruptedFileError,
-    UnsupportedFormatError,
     ChunkError,
+    CorruptedFileError,
     InvalidChunkError,
+    InvalidWAVFormatError,
     MissingChunkError,
+    RiffyError,
+    UnsupportedFormatError,
+    WAVError,
 )
+from .wav import WAVChunk, WAVFormat, WAVParser
 
 __all__ = [
     # Version
