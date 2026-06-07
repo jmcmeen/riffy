@@ -1,14 +1,16 @@
 """Tests for exception handling and error conditions."""
+
 import pytest
+
 from riffy.exceptions import (
-    RiffyError,
-    WAVError,
-    InvalidWAVFormatError,
-    CorruptedFileError,
-    UnsupportedFormatError,
     ChunkError,
+    CorruptedFileError,
     InvalidChunkError,
+    InvalidWAVFormatError,
     MissingChunkError,
+    RiffyError,
+    UnsupportedFormatError,
+    WAVError,
 )
 
 
