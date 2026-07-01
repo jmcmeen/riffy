@@ -53,6 +53,7 @@ Each builds a WAV, embeds metadata of one kind, then reads it back.
 | `ixml_metadata.py` | Read an `iXML` document as a nested dict / via `find()`. |
 | `rf64_largefile.py` | Write the RF64/BW64 large-file form with `write_wav(force_rf64=True)`. |
 | `read_metadata_unified.py` | Detect every standard at once with `read_metadata()` + `dump_metadata()`. |
+| `batch_correct_guano.py` | Batch-fix a GUANO field (e.g. a wrong `Loc Position`) across a whole folder — dry-run by default, atomic writes, `--backup`, verified. |
 
 ## `practical_demo.py`
 
