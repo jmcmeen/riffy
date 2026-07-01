@@ -200,6 +200,38 @@ data = dump_metadata("recording.wav")   # plain, JSON-serializable dict
 print(json.dumps(data, indent=2))
 ```
 
+## Comparing and verifying files
+
+`riffy.diff(a, b)` compares two WAV files at two levels — which chunks changed,
+and which decoded metadata fields changed — so you can confirm a batch edit did
+exactly (and only) what you intended.
+
+```python
+from riffy import diff
+
+d = diff("original.wav", "corrected.wav")
+d.identical            # False
+d.changed_chunks       # [ChunkDelta(chunk_id='guan', status='changed', ...)]
+for f in d.fields:
+    print(f.standard, f.key, f.old, "->", f.new)
+    # guano Loc Position 35.9 -83.9 -> 36.31 -82.34
+```
+
+Chunk comparison is insensitive to chunk reordering (occurrences are matched per
+ID), so a re-written file diffs clean except for the fields you actually changed.
+
+From the command line:
+
+```console
+$ python -m riffy diff original.wav corrected.wav
+$ python -m riffy diff --json original.wav corrected.wav
+```
+
+The [`batch_correct_guano.py`](https://github.com/jmcmeen/riffy/blob/main/examples/batch_correct_guano.py)
+example uses this to bulk-fix a GUANO field across a folder (e.g. a wrong
+`Loc Position` from a stale GPS fix) with a `--verify` mode that diffs each file
+against its original to confirm only the intended field changed.
+
 ## Known limitations
 
 - **AudioMoth firmware 1.8+ frequency trigger.** The `Frequency trigger (...)`

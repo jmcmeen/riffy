@@ -34,6 +34,7 @@ except PackageNotFoundError:  # pragma: no cover - only when running un-installe
 __author__ = "John McMeen"
 
 # Import main classes and functions
+from .diff import ChunkDelta, FieldDelta, WavDiff, diff
 from .exceptions import (
     ChunkError,
     CorruptedFileError,
@@ -73,6 +74,11 @@ __all__ = [
     "BextMetadata",
     "AudioMothMetadata",
     "IXmlMetadata",
+    # Diffing
+    "diff",
+    "WavDiff",
+    "ChunkDelta",
+    "FieldDelta",
     # Exceptions
     "RiffyError",
     "WAVError",

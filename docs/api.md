@@ -55,6 +55,17 @@ The unified entry point and per-standard classes. See the
       members:
         - IXmlMetadata
 
+## Diffing
+
+::: riffy.diff
+    options:
+      show_root_heading: false
+      members:
+        - diff
+        - WavDiff
+        - ChunkDelta
+        - FieldDelta
+
 ## Exceptions
 
 ::: riffy.exceptions

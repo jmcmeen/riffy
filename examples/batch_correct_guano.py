@@ -40,7 +40,7 @@ from pathlib import Path
 
 from _helpers import make_pcm_wav
 
-from riffy import GuanoMetadata, WAVParser
+from riffy import GuanoMetadata, WAVParser, diff
 
 # A change is (namespace, key, new_value). The base GUANO namespace is "".
 Change = tuple[str, str, str]
@@ -76,19 +76,21 @@ def _diff_fields(guano: GuanoMetadata, changes: list[Change]) -> list[tuple[str,
     return rows
 
 
-def process_file(path: Path, changes: list[Change], *, apply: bool, backup: bool) -> dict:
+def process_file(
+    path: Path, changes: list[Change], *, apply: bool, backup: bool, verify: bool
+) -> dict:
     """Inspect (and optionally correct) one file. Returns a result dict."""
     guano = GuanoMetadata.from_parser(WAVParser(path))
     if guano is None:
         return {"status": "skipped", "reason": "no GUANO block"}
 
-    diff = _diff_fields(guano, changes)
-    changed = any(old != new for _, old, new in diff)
+    rows = _diff_fields(guano, changes)
+    changed = any(old != new for _, old, new in rows)
     if not changed:
-        return {"status": "ok", "diff": diff}  # already correct
+        return {"status": "ok", "diff": rows}  # already correct
 
     if not apply:
-        return {"status": "dry-run", "diff": diff}
+        return {"status": "dry-run", "diff": rows}
 
     # Apply the changes and write atomically: temp file -> os.replace.
     for namespace, key, value in changes:
@@ -96,19 +98,42 @@ def process_file(path: Path, changes: list[Change], *, apply: bool, backup: bool
     parser = WAVParser(path)
     guano.write_to_parser(parser)
 
+    backup_path = path.with_name(path.name + ".bak")
     tmp = path.with_name(path.name + ".riffytmp")
     parser.write_wav(tmp, overwrite=True)
-    if backup:
-        shutil.copy2(path, path.with_name(path.name + ".bak"))
+    if backup or verify:  # verify diffs against the original, so it needs the backup
+        shutil.copy2(path, backup_path)
     os.replace(tmp, path)
 
-    # Verify the correction actually took by re-reading from disk.
+    # Re-read from disk to confirm the correction took.
     reloaded = GuanoMetadata.from_parser(WAVParser(path))
     assert reloaded is not None
     for namespace, key, value in changes:
         if reloaded.get(namespace, key) != value:
-            return {"status": "error", "reason": f"verification failed for {key!r}", "diff": diff}
-    return {"status": "written", "diff": diff}
+            return {"status": "error", "reason": f"verification failed for {key!r}", "diff": rows}
+
+    # Optional diff-based validation: confirm ONLY the requested fields changed
+    # and the audio data chunk is untouched.
+    if verify:
+        wav_diff = diff(backup_path, path)
+        requested = {(f"{ns}|{k}" if ns else k) for ns, k, _ in changes}
+        unexpected_fields = sorted(
+            {d.key for d in wav_diff.fields if d.standard == "guano"} - requested
+        )
+        # The only chunk allowed to change is 'guan' (rewriting the GUANO text).
+        unexpected_chunks = sorted(
+            {c.chunk_id for c in wav_diff.changed_chunks if c.chunk_id != "guan"}
+        )
+        if unexpected_fields or unexpected_chunks:
+            reason = (
+                f"unexpected chunk change {unexpected_chunks}"
+                if unexpected_chunks
+                else f"unexpected field change {unexpected_fields}"
+            )
+            return {"status": "error", "reason": f"diff check failed: {reason}", "diff": rows}
+        if not backup:  # verify borrowed the backup; remove it if the user didn't ask for one
+            backup_path.unlink()
+    return {"status": "written", "diff": rows, "verified": verify}
 
 
 def _print_result(path: Path, result: dict, root: Path) -> None:
@@ -125,12 +150,20 @@ def _print_result(path: Path, result: dict, root: Path) -> None:
     for label, old, new in result["diff"]:
         marker = "" if old != new else "  (unchanged)"
         print(f"    {label}: {old!r} -> {new!r}{marker}")
+    if result.get("verified"):
+        print("    verified: audio data unchanged; only the requested field(s) changed")
     if status == "error":
         print(f"    !! {result['reason']}")
 
 
 def run_batch(
-    folder: Path, changes: list[Change], *, apply: bool, backup: bool, recursive: bool
+    folder: Path,
+    changes: list[Change],
+    *,
+    apply: bool,
+    backup: bool,
+    recursive: bool,
+    verify: bool = False,
 ) -> dict:
     """Scan ``folder`` and correct matching files. Returns a summary dict."""
     wavs = find_wavs(folder, recursive)
@@ -141,7 +174,7 @@ def run_batch(
     counts = {"written": 0, "dry-run": 0, "ok": 0, "skipped": 0, "error": 0}
     for path in wavs:
         try:
-            result = process_file(path, changes, apply=apply, backup=backup)
+            result = process_file(path, changes, apply=apply, backup=backup, verify=verify)
         except Exception as e:  # keep going through the rest of the catalog
             result = {"status": "error", "reason": str(e), "diff": []}
         counts[result["status"]] += 1
@@ -183,8 +216,8 @@ def demo() -> None:
         changes = [("", "Loc Position", corrected)]
         print("=== Step 1: dry run (the default) ===")
         run_batch(folder, changes, apply=False, backup=False, recursive=True)
-        print("\n=== Step 2: apply the correction ===")
-        run_batch(folder, changes, apply=True, backup=True, recursive=True)
+        print("\n=== Step 2: apply the correction, verified via diff ===")
+        run_batch(folder, changes, apply=True, backup=True, recursive=True, verify=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -207,6 +240,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--apply", action="store_true", help="write changes (default: dry run)")
     parser.add_argument("--backup", action="store_true", help="keep a .bak copy of each file")
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="after writing, diff against the original to confirm only the "
+        "requested field(s) changed and the audio is untouched",
+    )
     args = parser.parse_args(argv)
 
     if args.folder is None:
@@ -225,7 +264,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(e))
 
     summary = run_batch(
-        folder, changes, apply=args.apply, backup=args.backup, recursive=args.recursive
+        folder,
+        changes,
+        apply=args.apply,
+        backup=args.backup,
+        recursive=args.recursive,
+        verify=args.verify,
     )
     return 1 if summary["error"] else 0
 

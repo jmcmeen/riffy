@@ -88,6 +88,14 @@ core (the one breaking change — see below).
   (a within-standard normalization). Format knowledge is derived from the
   `metamoth` library and the AudioMoth firmware source, and validated against
   real device recordings (firmware ~1.0.1 and 1.6.0).
+- **File diffing** — `riffy.diff(a, b)` returns a `WavDiff` comparing two WAV
+  files at two levels: per-chunk deltas (added / removed / changed / unchanged,
+  compared occurrence-by-occurrence and insensitive to chunk reordering) and a
+  decoded per-standard metadata field diff (GUANO, RIFF INFO, `bext`). The CLI
+  gains `python -m riffy diff A B` (with `--json` / `--all`), and the batch
+  example (`examples/batch_correct_guano.py`) gains a `--verify` flag that uses
+  the diff to confirm an edit changed only the intended field and left the audio
+  untouched. Useful for verifying and validating bulk metadata edits.
 - **Unified metadata view** — `riffy.read_metadata(path)` returns a
   `RecordingMetadata` exposing each detected standard side by side (`.guano`,
   `.info`, `.bext`, `.audiomoth`, each `None` when absent) plus `.sources`

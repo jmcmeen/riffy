@@ -187,6 +187,7 @@ Or inspect a file from the command line (standard library only):
 ```bash
 python -m riffy recording.wav          # human-readable
 python -m riffy --json recording.wav   # JSON-serializable dump
+python -m riffy diff a.wav b.wav        # chunk + metadata differences
 ```
 
 riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and
