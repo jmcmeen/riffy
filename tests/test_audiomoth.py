@@ -205,6 +205,17 @@ class TestPartialExtraction:
         assert m.gain == "high"
         assert m.battery_voltage == 3.9
 
+    def test_frequency_trigger_clause_not_mistaken_for_filter(self):
+        # Firmware 1.8+ 'Frequency trigger (2.0kHz ...)' is not decoded, but its
+        # kHz value must NOT leak into filter_frequencies_khz (no filter present).
+        comment = (
+            "temperature was 22.0C. Frequency trigger (2.0kHz and window length "
+            "of 16 samples) threshold was 50% with 5s minimum trigger duration."
+        )
+        m = AudioMothMetadata.from_comment(comment)
+        assert m.filter_type is None
+        assert m.filter_frequencies_khz == []
+
     def test_garbage_string_returns_empty_object(self):
         m = AudioMothMetadata.from_comment("not an audiomoth comment at all")
         assert m.timestamp is None

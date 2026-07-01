@@ -20,6 +20,11 @@ Format knowledge here is derived from the ``metamoth`` library
 firmware source (github.com/OpenAcousticDevices/AudioMoth-Firmware-Basic,
 ``setHeaderComment`` in ``src/main.c``). Parsing is best-effort and
 firmware-dependent by nature.
+
+Known limitation: the firmware 1.8+ ``Frequency trigger (...)`` clause is not
+decoded into a dedicated field (no real sample was available to validate it
+against). It is left in the raw ``comment`` string for downstream consumers, and
+it is deliberately *not* mistaken for a frequency filter.
 """
 
 import re
@@ -77,6 +82,9 @@ class AudioMothMetadata:
     device_id: str | None = None
     deployment_id: str | None = None
     gain: str | None = None
+    #: The numeric voltage figure mentioned in the comment. For a threshold
+    #: reading ("less than 2.5V") this is the threshold, not a measurement; the
+    #: full phrase is preserved in ``battery_state``.
     battery_voltage: float | None = None
     battery_state: str | None = None
     temperature_c: float | None = None
