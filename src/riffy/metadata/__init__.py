@@ -13,4 +13,6 @@ re-exported at the package level yet — they are reachable via
 re-export the typed metadata classes (GUANO, INFO, bext, ...) as they land.
 """
 
-__all__: list[str] = []
+from .guano import GuanoMetadata
+
+__all__ = ["GuanoMetadata"]

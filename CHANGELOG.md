@@ -41,6 +41,16 @@ chunk-store change that later metadata features build on.
   `riffy.metadata.base`: `validate_fourcc`, `pad_to_even`, `read_zstr`,
   `write_zstr`, and `decode_text` (UTF-8 with fail-soft latin-1 fallback). These
   are the building blocks the per-standard metadata decoders build on.
+- **GUANO read/write** (`riffy.metadata.GuanoMetadata`) — full support for the
+  `guan` chunk: `from_parser` / `from_bytes` to read, `to_chunk_bytes` /
+  `write_to_parser` to write. Well-known fields are typed attributes
+  (`timestamp` as a timezone-aware `datetime` with its offset preserved,
+  `loc_position` as a `(lat, lon)` tuple, `species_manual_id` / `tags` as lists,
+  plus typed strings/ints/floats); vendor and arbitrary fields are reachable via
+  `get` / `set` / `fields` and are **preserved verbatim and in order** on
+  round-trip, as the spec requires. `GUANO|Version` is always serialized first,
+  multiline values are `\n`-escaped, output is even-padded, and non-UTF-8
+  payloads fall back to latin-1 with a warning.
 
 ## [0.2.1] - 2026-06-06
 
