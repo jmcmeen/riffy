@@ -34,6 +34,14 @@ from .exceptions import (
     UnsupportedFormatError,
     WAVError,
 )
+from .metadata import (
+    AudioMothMetadata,
+    BextMetadata,
+    GuanoMetadata,
+    InfoMetadata,
+    RecordingMetadata,
+    read_metadata,
+)
 from .wav import WAVChunk, WAVFormat, WAVParser
 
 __all__ = [
@@ -44,6 +52,13 @@ __all__ = [
     "WAVParser",
     "WAVFormat",
     "WAVChunk",
+    # Recorder metadata
+    "read_metadata",
+    "RecordingMetadata",
+    "GuanoMetadata",
+    "InfoMetadata",
+    "BextMetadata",
+    "AudioMothMetadata",
     # Exceptions
     "RiffyError",
     "WAVError",

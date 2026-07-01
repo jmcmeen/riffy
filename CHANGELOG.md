@@ -78,6 +78,13 @@ chunk-store change that later metadata features build on.
   (a within-standard normalization). Format knowledge is derived from the
   `metamoth` library and the AudioMoth firmware source, and validated against
   real device recordings (firmware ~1.0.1 and 1.6.0).
+- **Unified metadata view** — `riffy.read_metadata(path)` returns a
+  `RecordingMetadata` exposing each detected standard side by side (`.guano`,
+  `.info`, `.bext`, `.audiomoth`, each `None` when absent) plus `.sources`
+  listing which were present. It deliberately does **no** cross-standard
+  reconciliation — it surfaces each standard close to its raw parsed form and
+  leaves precedence/merging policy to downstream consumers. All new metadata
+  classes are also re-exported from the top-level `riffy` package.
 
 ## [0.2.1] - 2026-06-06
 

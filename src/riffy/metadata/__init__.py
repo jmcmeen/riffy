@@ -17,5 +17,13 @@ from .audiomoth import AudioMothMetadata
 from .bext import BextMetadata
 from .guano import GuanoMetadata
 from .info import InfoMetadata
+from .recording import RecordingMetadata, read_metadata
 
-__all__ = ["AudioMothMetadata", "BextMetadata", "GuanoMetadata", "InfoMetadata"]
+__all__ = [
+    "AudioMothMetadata",
+    "BextMetadata",
+    "GuanoMetadata",
+    "InfoMetadata",
+    "RecordingMetadata",
+    "read_metadata",
+]
