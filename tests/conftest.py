@@ -1,10 +1,76 @@
 """Pytest configuration and fixtures for riffy tests."""
 
 import struct
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from riffy.wav import WAVParser
+
+
+def minimal_pcm_wav_bytes(
+    extra_chunks: Iterable[tuple[str, bytes]] = (),
+    *,
+    audio_format: int = 1,
+    channels: int = 1,
+    sample_rate: int = 8000,
+    bits_per_sample: int = 8,
+    audio: bytes = b"\x00\x01\x02\x03",
+) -> bytes:
+    """Build raw bytes for a valid PCM WAV, with optional extra chunks appended.
+
+    This is the low-level builder for the metadata-fixtures harness: it produces
+    a byte string (not a file) so tests can craft arbitrary or deliberately
+    malformed files. ``extra_chunks`` is an iterable of ``(fourcc, payload)``
+    written verbatim after the mandatory ``fmt ``/``data`` chunks, each padded
+    to even length.
+    """
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    fmt_payload = struct.pack(
+        "<HHIIHH", audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample
+    )
+
+    def _chunk(fourcc: str, payload: bytes) -> bytes:
+        out = fourcc.encode("ascii") + struct.pack("<I", len(payload)) + payload
+        if len(payload) % 2:
+            out += b"\x00"
+        return out
+
+    body = _chunk("fmt ", fmt_payload) + _chunk("data", audio)
+    for fourcc, payload in extra_chunks:
+        body += _chunk(fourcc, payload)
+
+    riff_payload = b"WAVE" + body
+    return b"RIFF" + struct.pack("<I", len(riff_payload)) + riff_payload
+
+
+@pytest.fixture
+def make_metadata_wav(tmp_path) -> Callable[..., Path]:
+    """Factory that authors a WAV carrying metadata chunks using riffy itself.
+
+    Returns a callable ``make(chunks, *, name="meta.wav") -> Path`` where
+    ``chunks`` is an iterable of ``(fourcc, payload)``. The file is built by
+    parsing a minimal base WAV and ``add_chunk``-ing each entry, so it doubles
+    as an exercise of the write path (the plan's stated intent for fixtures).
+
+    Duplicate FOURCCs are honored — ``add_chunk`` appends each occurrence — so
+    e.g. two ``("LIST", ...)`` entries produce two LIST chunks in order.
+    """
+
+    def _make(chunks: Iterable[tuple[str, bytes]] = (), *, name: str = "meta.wav") -> Path:
+        base = tmp_path / f"_base_{name}"
+        base.write_bytes(minimal_pcm_wav_bytes())
+        parser = WAVParser(base)
+        for fourcc, payload in chunks:
+            parser.add_chunk(fourcc, payload)
+        out = tmp_path / name
+        parser.write_wav(out)
+        return out
+
+    return _make
 
 
 @pytest.fixture

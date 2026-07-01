@@ -37,6 +37,10 @@ chunk-store change that later metadata features build on.
 - `WAVParser.get_chunks(id)` — every chunk with an ID, in file order.
 - `WAVParser.get_chunk_bytes(id)` — the raw payload of the first chunk with an
   ID (the accessor the forthcoming metadata layer decodes from).
+- `riffy.metadata` subpackage scaffolding with shared low-level primitives in
+  `riffy.metadata.base`: `validate_fourcc`, `pad_to_even`, `read_zstr`,
+  `write_zstr`, and `decode_text` (UTF-8 with fail-soft latin-1 fallback). These
+  are the building blocks the per-standard metadata decoders build on.
 
 ## [0.2.1] - 2026-06-06
 
