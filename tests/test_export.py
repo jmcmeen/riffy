@@ -41,7 +41,7 @@ class TestExportChunk:
         # Verify content matches
         with open(output_file, "rb") as f:
             exported_data = f.read()
-        assert exported_data == parser.chunks["fmt "].data
+        assert exported_data == parser.get_chunk("fmt ").data
 
     def test_export_chunk_with_string_path(self, valid_pcm_wav, tmp_path):
         """Test export_chunk with string path instead of Path object."""
@@ -212,17 +212,14 @@ class TestListChunks:
 
         chunks = parser.list_chunks()
 
-        # Check fmt chunk
-        assert "size" in chunks["fmt "]
-        assert "offset" in chunks["fmt "]
-        assert chunks["fmt "]["size"] == 16  # PCM format
-        assert isinstance(chunks["fmt "]["offset"], int)
+        # Each ID maps to a list of occurrences; these files have one each.
+        assert chunks["fmt "] == [{"size": 16, "offset": chunks["fmt "][0]["offset"]}]
+        assert chunks["fmt "][0]["size"] == 16  # PCM format
+        assert isinstance(chunks["fmt "][0]["offset"], int)
 
         # Check data chunk
-        assert "size" in chunks["data"]
-        assert "offset" in chunks["data"]
-        assert chunks["data"]["size"] == valid_pcm_wav["data_size"]
-        assert isinstance(chunks["data"]["offset"], int)
+        assert chunks["data"][0]["size"] == valid_pcm_wav["data_size"]
+        assert isinstance(chunks["data"][0]["offset"], int)
 
     def test_list_chunks_offsets(self, valid_pcm_wav):
         """Test that chunk offsets are correct."""
@@ -232,8 +229,8 @@ class TestListChunks:
 
         # fmt chunk typically starts at offset 12 (after RIFF header)
         # data chunk starts after fmt chunk + padding
-        assert chunks["fmt "]["offset"] > 0
-        assert chunks["data"]["offset"] > chunks["fmt "]["offset"]
+        assert chunks["fmt "][0]["offset"] > 0
+        assert chunks["data"][0]["offset"] > chunks["fmt "][0]["offset"]
 
     def test_list_chunks_matches_parser_chunks(self, valid_pcm_wav):
         """Test that list_chunks matches internal chunks."""
@@ -241,11 +238,12 @@ class TestListChunks:
 
         chunks = parser.list_chunks()
 
-        # Verify matches internal state
-        for chunk_id, chunk_info in chunks.items():
+        # Verify matches internal state (each ID maps to a list of occurrences)
+        for chunk_id, occurrences in chunks.items():
             assert chunk_id in parser.chunks
-            assert chunk_info["size"] == parser.chunks[chunk_id].size
-            assert chunk_info["offset"] == parser.chunks[chunk_id].offset
+            for chunk_info, chunk in zip(occurrences, parser.chunks[chunk_id]):
+                assert chunk_info["size"] == chunk.size
+                assert chunk_info["offset"] == chunk.offset
 
 
 class TestExportWorkflows:

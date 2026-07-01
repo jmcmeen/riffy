@@ -19,8 +19,13 @@ print(f"Duration:    {info['duration_seconds']:.2f} s")
 ## Inspecting chunks
 
 ```python
-for chunk_id, chunk in parser.chunks.items():
-    print(f"{chunk_id!r}: {chunk.size} bytes at offset {chunk.offset}")
+# Each ID maps to a list of occurrences (a file may repeat a chunk ID).
+for chunk_id, chunk_list in parser.chunks.items():
+    for chunk in chunk_list:
+        print(f"{chunk_id!r}: {chunk.size} bytes at offset {chunk.offset}")
+
+# Fetch a single chunk (first occurrence) by ID, or None if absent:
+fmt_chunk = parser.get_chunk("fmt ")
 
 # Or get a lightweight summary:
 print(parser.list_chunks())

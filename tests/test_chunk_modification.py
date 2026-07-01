@@ -21,8 +21,8 @@ class TestReplaceChunk:
 
         parser.replace_chunk("data", new_audio_data)
 
-        assert parser.chunks["data"].size == 2000
-        assert parser.chunks["data"].data == new_audio_data
+        assert parser.get_chunk("data").size == 2000
+        assert parser.get_chunk("data").data == new_audio_data
         assert parser.audio_data == new_audio_data
         assert len(parser.audio_data) != original_size
 
@@ -35,8 +35,8 @@ class TestReplaceChunk:
 
         parser.replace_chunk("fmt ", new_fmt_data)
 
-        assert parser.chunks["fmt "].size == 16
-        assert parser.chunks["fmt "].data == new_fmt_data
+        assert parser.get_chunk("fmt ").size == 16
+        assert parser.get_chunk("fmt ").data == new_fmt_data
 
     def test_replace_nonexistent_chunk(self, valid_pcm_wav):
         """Test replacing a chunk that doesn't exist."""
@@ -73,8 +73,8 @@ class TestAddChunk:
         parser.add_chunk("INFO", chunk_data)
 
         assert "INFO" in parser.chunks
-        assert parser.chunks["INFO"].data == chunk_data
-        assert parser.chunks["INFO"].size == len(chunk_data)
+        assert parser.get_chunk("INFO").data == chunk_data
+        assert parser.get_chunk("INFO").size == len(chunk_data)
 
     def test_add_chunk_with_invalid_length(self, valid_pcm_wav):
         """Test adding a chunk with invalid ID length."""
@@ -93,12 +93,20 @@ class TestAddChunk:
         with pytest.raises(InvalidChunkError, match="must contain only ASCII characters"):
             parser.add_chunk("IN\xff\xff", b"test")
 
-    def test_add_existing_chunk(self, valid_pcm_wav):
-        """Test adding a chunk that already exists."""
+    def test_add_existing_chunk_appends(self, valid_pcm_wav):
+        """Adding a chunk whose ID exists appends a new occurrence (Option B)."""
         parser = WAVParser(valid_pcm_wav["filepath"])
 
-        with pytest.raises(ValueError, match="already exists"):
-            parser.add_chunk("data", b"test")
+        original = parser.get_chunk("data")
+        parser.add_chunk("data", b"second data chunk")
+
+        occurrences = parser.get_chunks("data")
+        assert len(occurrences) == 2
+        # First occurrence untouched; the new one is appended after it.
+        assert occurrences[0].data == original.data
+        assert occurrences[1].data == b"second data chunk"
+        # The canonical single-chunk accessor still returns the first occurrence.
+        assert parser.get_chunk("data").data == original.data
 
     def test_add_multiple_chunks(self, valid_pcm_wav):
         """Test adding multiple new chunks."""
@@ -123,7 +131,7 @@ class TestSetChunk:
         parser.set_chunk("INFO", chunk_data)
 
         assert "INFO" in parser.chunks
-        assert parser.chunks["INFO"].data == chunk_data
+        assert parser.get_chunk("INFO").data == chunk_data
 
     def test_set_existing_chunk(self, valid_pcm_wav):
         """Test set_chunk with an existing chunk (should replace it)."""
@@ -132,7 +140,7 @@ class TestSetChunk:
         new_data = b"\x00\x01" * 500
         parser.set_chunk("data", new_data)
 
-        assert parser.chunks["data"].data == new_data
+        assert parser.get_chunk("data").data == new_data
         assert parser.audio_data == new_data
 
     def test_set_chunk_with_invalid_id(self, valid_pcm_wav):
@@ -153,12 +161,12 @@ class TestCopyChunkFromParser:
         parser2 = WAVParser(valid_mono_wav["filepath"])
 
         # Get original data chunk from parser1
-        original_data = parser1.chunks["data"].data
+        original_data = parser1.get_chunk("data").data
 
         # Copy data chunk from parser1 to parser2
         parser2.copy_chunk_from_parser("data", parser1)
 
-        assert parser2.chunks["data"].data == original_data
+        assert parser2.get_chunk("data").data == original_data
         assert parser2.audio_data == original_data
 
     def test_copy_custom_chunk(self, valid_pcm_wav, valid_mono_wav):
@@ -171,7 +179,7 @@ class TestCopyChunkFromParser:
         parser2.copy_chunk_from_parser("INFO", parser1)
 
         assert "INFO" in parser2.chunks
-        assert parser2.chunks["INFO"].data == b"Metadata from parser1"
+        assert parser2.get_chunk("INFO").data == b"Metadata from parser1"
 
     def test_copy_nonexistent_chunk(self, valid_pcm_wav, valid_mono_wav):
         """Test copying a chunk that doesn't exist."""
@@ -202,7 +210,7 @@ class TestWriteWav:
         parser = WAVParser(valid_pcm_wav["filepath"])
 
         original_audio = parser.audio_data
-        original_fmt = parser.chunks["fmt "].data
+        original_fmt = parser.get_chunk("fmt ").data
 
         output_path = tmp_path / "output.wav"
         parser.write_wav(output_path)
@@ -211,7 +219,7 @@ class TestWriteWav:
         parser2 = WAVParser(output_path)
 
         assert parser2.audio_data == original_audio
-        assert parser2.chunks["fmt "].data == original_fmt
+        assert parser2.get_chunk("fmt ").data == original_fmt
 
     def test_write_wav_with_modifications(self, valid_pcm_wav, tmp_path):
         """Test writing a WAV file after modifications."""
@@ -232,7 +240,7 @@ class TestWriteWav:
 
         assert parser2.audio_data == new_audio
         assert "INFO" in parser2.chunks
-        assert parser2.chunks["INFO"].data == b"Modified audio"
+        assert parser2.get_chunk("INFO").data == b"Modified audio"
 
     def test_write_wav_chunk_ordering(self, valid_pcm_wav, tmp_path):
         """Test that chunks are written in correct order (fmt, data, others)."""
@@ -275,7 +283,7 @@ class TestWriteWav:
         # Verify the file can be parsed
         parser2 = WAVParser(output_path)
 
-        assert parser2.chunks["INFO"].data == odd_data
+        assert parser2.get_chunk("INFO").data == odd_data
 
     def test_write_wav_overwrite_protection(self, valid_pcm_wav):
         """Test that overwriting source file requires explicit flag."""
@@ -458,6 +466,6 @@ class TestChunkModificationIntegration:
         # Verify final state
         parser3 = WAVParser(output2)
 
-        assert parser3.chunks["INFO"].data == b"Version 2"
-        assert parser3.chunks["LIST"].data == b"New chunk"
+        assert parser3.get_chunk("INFO").data == b"Version 2"
+        assert parser3.get_chunk("LIST").data == b"New chunk"
         assert parser3.audio_data == parser1.audio_data

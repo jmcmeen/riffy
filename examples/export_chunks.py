@@ -72,8 +72,10 @@ def export_example() -> None:
     # ===== List all chunks =====
     print("Available Chunks:")
     chunks = parser.list_chunks()
-    for chunk_id, chunk_info in chunks.items():
-        print(f"  '{chunk_id}': {chunk_info['size']:,} bytes at offset {chunk_info['offset']}")
+    for chunk_id, occurrences in chunks.items():
+        # Each ID maps to a list of occurrences (a file may repeat a chunk ID).
+        for chunk_info in occurrences:
+            print(f"  '{chunk_id}': {chunk_info['size']:,} bytes at offset {chunk_info['offset']}")
     print()
 
     # ===== Export format chunk =====

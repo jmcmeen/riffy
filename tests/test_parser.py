@@ -77,7 +77,7 @@ class TestChunkParsing:
         parser = WAVParser(valid_pcm_wav["filepath"])
 
         assert "fmt " in parser.chunks
-        fmt_chunk = parser.chunks["fmt "]
+        fmt_chunk = parser.get_chunk("fmt ")
         assert isinstance(fmt_chunk, WAVChunk)
         assert fmt_chunk.id == "fmt "
         assert fmt_chunk.size == 16  # PCM format chunk size
@@ -87,7 +87,7 @@ class TestChunkParsing:
         parser = WAVParser(valid_pcm_wav["filepath"])
 
         assert "data" in parser.chunks
-        data_chunk = parser.chunks["data"]
+        data_chunk = parser.get_chunk("data")
         assert isinstance(data_chunk, WAVChunk)
         assert data_chunk.id == "data"
         assert data_chunk.size == valid_pcm_wav["data_size"]

@@ -130,7 +130,7 @@ def demo_add_metadata():
         verify = WAVParser(output_path)
         verify
         print(f"Verified chunks: {list(verify.chunks.keys())}")
-        print(f"INFO chunk content: {verify.chunks['INFO'].data}")
+        print(f"INFO chunk content: {verify.get_chunk('INFO').data}")
         print("✓ Success!")
 
 
@@ -177,7 +177,7 @@ def demo_copy_between_files():
         verify = WAVParser(output_path)
         verify
         print(f"Verified audio matches source: {verify.audio_data == source.audio_data}")
-        print(f"Verified INFO chunk: {verify.chunks['INFO'].data}")
+        print(f"Verified INFO chunk: {verify.get_chunk('INFO').data}")
         print("✓ Success!")
 
 
@@ -283,8 +283,8 @@ def demo_complete_workflow():
         print(f"  Chunks: {list(verify.chunks.keys())}")
         print(f"  Audio matches: {verify.audio_data == new_audio}")
         print(f"  Duration: {verify_info['duration_seconds']:.2f} seconds")
-        print(f"  INFO chunk: {verify.chunks['INFO'].data}")
-        print(f"  ISFT chunk: {verify.chunks['ISFT'].data}")
+        print(f"  INFO chunk: {verify.get_chunk('INFO').data}")
+        print(f"  ISFT chunk: {verify.get_chunk('ISFT').data}")
         print("\n✓ Complete workflow successful!")
 
 

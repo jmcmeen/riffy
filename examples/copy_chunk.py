@@ -76,7 +76,7 @@ def main() -> None:
 
         verify = WAVParser(output_path)
         print(f"Audio matches source: {verify.audio_data == source.audio_data}")
-        print(f"Copied INFO chunk:    {verify.chunks['INFO'].data}")
+        print(f"Copied INFO chunk:    {verify.get_chunk('INFO').data}")
         print("\n✓ Done")
 
 

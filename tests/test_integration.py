@@ -36,8 +36,8 @@ class TestFullParsingWorkflow:
         # Verify chunks
         assert "fmt " in info["chunks"]
         assert "data" in info["chunks"]
-        assert info["chunks"]["fmt "] == 16  # Standard PCM format chunk size
-        assert info["chunks"]["data"] == valid_pcm_wav["data_size"]
+        assert info["chunks"]["fmt "] == [16]  # Standard PCM format chunk size
+        assert info["chunks"]["data"] == [valid_pcm_wav["data_size"]]
 
     def test_parse_mono_wav_complete(self, valid_mono_wav):
         """Test complete parsing workflow for mono WAV."""
@@ -224,8 +224,8 @@ class TestRealWorldScenarios:
         parser = WAVParser(valid_pcm_wav["filepath"])
 
         # Access chunks
-        fmt_chunk = parser.chunks["fmt "]
-        data_chunk = parser.chunks["data"]
+        fmt_chunk = parser.get_chunk("fmt ")
+        data_chunk = parser.get_chunk("data")
 
         assert fmt_chunk.id == "fmt "
         assert data_chunk.id == "data"

@@ -62,18 +62,18 @@ def main() -> None:
         # First call adds the chunk because it doesn't exist yet.
         parser.set_chunk("INFO", b"Version 1\x00")
         print(f"\nAfter set v1:    {list(parser.chunks.keys())}")
-        print(f"INFO content:    {parser.chunks['INFO'].data}")
+        print(f"INFO content:    {parser.get_chunk('INFO').data}")
 
         # Second call replaces it in place -- the chunk count is unchanged.
         parser.set_chunk("INFO", b"Version 2\x00")
         print(f"\nAfter set v2:    {list(parser.chunks.keys())}")
-        print(f"INFO content:    {parser.chunks['INFO'].data}")
+        print(f"INFO content:    {parser.get_chunk('INFO').data}")
 
         parser.write_wav(output_path)
         print(f"\nWrote {output_path.name}")
 
         verify = WAVParser(output_path)
-        print(f"Verified INFO:   {verify.chunks['INFO'].data}")
+        print(f"Verified INFO:   {verify.get_chunk('INFO').data}")
         print("\n✓ Done")
 
 

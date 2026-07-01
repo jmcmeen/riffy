@@ -5,6 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Work toward v0.3.0 (recorder metadata parsing). This entry covers the core
+chunk-store change that later metadata features build on.
+
+### Changed
+
+- **BREAKING: the chunk store now keeps every occurrence of a chunk ID.**
+  `WAVParser.chunks` changed from `dict[str, WAVChunk]` to
+  `dict[str, list[WAVChunk]]`, so files carrying duplicate top-level IDs (for
+  example multiple `LIST` chunks) preserve all occurrences in file order instead
+  of silently keeping only the last one.
+
+  Migration:
+  - `parser.chunks["fmt "]` (a `WAVChunk`) → `parser.get_chunk("fmt ")` (the
+    first occurrence, or `None`), or `parser.chunks["fmt "][0]`.
+  - Iterating `for cid, chunk in parser.chunks.items()` → iterate the inner
+    list: `for cid, chunk_list in parser.chunks.items(): for chunk in chunk_list:`.
+  - `get_info()["chunks"]` values changed from `int` (a size) to `list[int]`
+    (one size per occurrence).
+  - `list_chunks()` values changed from `{"size", "offset"}` to a list of such
+    dicts, one per occurrence.
+  - `add_chunk()` no longer raises `ValueError` when the ID already exists; it
+    appends a new occurrence. Use `set_chunk()` to add-or-replace the first
+    occurrence, or `replace_chunk()` to overwrite it.
+
+### Added
+
+- `WAVParser.get_chunk(id)` — the first chunk with an ID, or `None`.
+- `WAVParser.get_chunks(id)` — every chunk with an ID, in file order.
+- `WAVParser.get_chunk_bytes(id)` — the raw payload of the first chunk with an
+  ID (the accessor the forthcoming metadata layer decodes from).
+
 ## [0.2.1] - 2026-06-06
 
 A maintenance release covering documentation, examples, and CI dependencies.

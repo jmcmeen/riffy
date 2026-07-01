@@ -76,13 +76,15 @@ from riffy import WAVParser
 # Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
 
-# Access all chunks
-for chunk_id, chunk in parser.chunks.items():
-    print(f"Chunk: {chunk_id}, Size: {chunk.size} bytes, Offset: {chunk.offset}")
+# Access all chunks. Each ID maps to a list of occurrences, so a file may
+# carry more than one chunk with the same ID (e.g. multiple LIST chunks).
+for chunk_id, chunk_list in parser.chunks.items():
+    for chunk in chunk_list:
+        print(f"Chunk: {chunk_id}, Size: {chunk.size} bytes, Offset: {chunk.offset}")
 
-# Access specific chunk
-if 'fmt ' in parser.chunks:
-    fmt_chunk = parser.chunks['fmt ']
+# Access a specific chunk (first occurrence) via the convenience accessor
+fmt_chunk = parser.get_chunk('fmt ')
+if fmt_chunk is not None:
     print(f"Format chunk size: {fmt_chunk.size}")
 ```
 
@@ -119,10 +121,12 @@ print(f"Exported {bytes_written} bytes of audio data")
 parser.export_chunk('fmt ', "format_chunk.bin")
 parser.export_chunk('data', "data_chunk.bin")
 
-# List all available chunks before exporting
+# List all available chunks before exporting. Each ID maps to a list of
+# occurrences, so iterate the inner list.
 chunks = parser.list_chunks()
-for chunk_id, info in chunks.items():
-    print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
+for chunk_id, occurrences in chunks.items():
+    for info in occurrences:
+        print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
 ```
 
 ### Modifying and Writing WAV Files
@@ -189,8 +193,8 @@ Output example:
   "audio_data_size": 617400,
   "sample_count": 154350,
   "chunks": {
-    "fmt ": 16,
-    "data": 617400
+    "fmt ": [16],
+    "data": [617400]
   }
 }
 ```
@@ -211,8 +215,10 @@ Currently, Riffy supports:
 ## Limitations
 
 - **PCM only**: Non-PCM (compressed) WAV files are rejected with `UnsupportedFormatError`.
-- **Unique chunk IDs**: `chunks` is keyed by chunk ID, so files containing multiple
-  chunks with the same ID (e.g. several `LIST` chunks) keep only the last one.
+- **Multiple chunks per ID**: `chunks` maps each chunk ID to a list of every
+  occurrence in file order, so files containing multiple chunks with the same ID
+  (e.g. several `LIST` chunks) preserve all of them. Use `get_chunk(id)` for the
+  common single-occurrence case.
 - **Chunk ordering on write**: `write_wav` emits `fmt ` then `data` then remaining
   chunks sorted by ID, so a parse/write round-trip may not be byte-for-byte identical.
 

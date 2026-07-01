@@ -88,22 +88,25 @@ def main():
         print(f"  Audio Data Size: {info['audio_data_size']:,} bytes")
         print(f"  Sample Count: {info['sample_count']:,}")
 
-        # Display chunks
+        # Display chunks. Each ID maps to a list of occurrence sizes.
         print("\nRIFF Chunks:")
-        for chunk_id, chunk_size in info["chunks"].items():
-            print(f"  {chunk_id!r}: {chunk_size:,} bytes")
+        for chunk_id, chunk_sizes in info["chunks"].items():
+            for chunk_size in chunk_sizes:
+                print(f"  {chunk_id!r}: {chunk_size:,} bytes")
 
         # Example 2: Access raw data
         print("\nRaw Audio Data:")
         print(f"  First 16 bytes: {parser.audio_data[:16].hex()}")
 
-        # Example 3: Iterate through chunks
+        # Example 3: Iterate through chunks. Each ID maps to a list of
+        # occurrences, so a file may carry more than one chunk per ID.
         print("\nDetailed Chunk Information:")
-        for chunk_id, chunk in parser.chunks.items():
-            print(f"  Chunk ID: {chunk_id!r}")
-            print(f"    Size: {chunk.size:,} bytes")
-            print(f"    Offset: {chunk.offset:,}")
-            print()
+        for chunk_id, chunk_list in parser.chunks.items():
+            for chunk in chunk_list:
+                print(f"  Chunk ID: {chunk_id!r}")
+                print(f"    Size: {chunk.size:,} bytes")
+                print(f"    Offset: {chunk.offset:,}")
+                print()
 
         # Example 4: Pretty print all information as JSON
         print("\nComplete Information (JSON):")

@@ -95,8 +95,8 @@ def main() -> None:
         print(f"  Chunks:       {list(verify.chunks.keys())}")
         print(f"  Audio matches: {verify.audio_data == new_audio}")
         print(f"  Duration:     {verify_info['duration_seconds']:.2f} s")
-        print(f"  INFO chunk:   {verify.chunks['INFO'].data}")
-        print(f"  ISFT chunk:   {verify.chunks['ISFT'].data}")
+        print(f"  INFO chunk:   {verify.get_chunk('INFO').data}")
+        print(f"  ISFT chunk:   {verify.get_chunk('ISFT').data}")
         print("\n✓ Done")
 
 
