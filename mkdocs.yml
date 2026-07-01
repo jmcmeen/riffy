@@ -49,4 +49,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Usage: usage.md
+  - Recorder Metadata: metadata.md
+  - Command-line interface: cli.md
+  - Migration (v0.3.0): migration.md
   - API Reference: api.md

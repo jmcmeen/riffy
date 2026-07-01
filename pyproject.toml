@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -45,6 +45,9 @@ docs = [
     "mkdocstrings[python]>=0.26",
 ]
 
+[project.scripts]
+riffy = "riffy.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/jmcmeen/riffy"
 Documentation = "https://jmcmeen.github.io/riffy/"
@@ -53,7 +56,7 @@ Issues = "https://github.com/jmcmeen/riffy/issues"
 Changelog = "https://github.com/jmcmeen/riffy/blob/main/CHANGELOG.md"
 
 [tool.hatch.version]
-path = "src/riffy/__init__.py"
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/riffy"]

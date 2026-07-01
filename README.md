@@ -14,6 +14,8 @@ Riffy provides a pure Python implementation for working with RIFF format files, 
 - **WAV File Support**: Complete WAV file parsing with format validation
 - **RIFF Chunk Management**: Access, add, replace, copy, and remove RIFF chunks
 - **Chunk Modification & Writing**: Modify chunks in memory and write valid WAV files back to disk
+- **Recorder Metadata**: Decode GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and iXML — with a unified `read_metadata()` view and a `python -m riffy` inspector
+- **RF64 / BW64**: Read and write 64-bit large files above the 4 GB classic-WAV limit
 - **Audio Metadata Extraction**: Extract sample rate, channels, bit depth, and duration
 - **Format Validation**: Automatic validation of file format and integrity
 - **Type Safety**: Full type hints (PEP 561 `py.typed`) for better IDE support and static analysis
@@ -76,13 +78,15 @@ from riffy import WAVParser
 # Parsing happens automatically on initialization
 parser = WAVParser("audio.wav")
 
-# Access all chunks
-for chunk_id, chunk in parser.chunks.items():
-    print(f"Chunk: {chunk_id}, Size: {chunk.size} bytes, Offset: {chunk.offset}")
+# Access all chunks. Each ID maps to a list of occurrences, so a file may
+# carry more than one chunk with the same ID (e.g. multiple LIST chunks).
+for chunk_id, chunk_list in parser.chunks.items():
+    for chunk in chunk_list:
+        print(f"Chunk: {chunk_id}, Size: {chunk.size} bytes, Offset: {chunk.offset}")
 
-# Access specific chunk
-if 'fmt ' in parser.chunks:
-    fmt_chunk = parser.chunks['fmt ']
+# Access a specific chunk (first occurrence) via the convenience accessor
+fmt_chunk = parser.get_chunk('fmt ')
+if fmt_chunk is not None:
     print(f"Format chunk size: {fmt_chunk.size}")
 ```
 
@@ -119,10 +123,12 @@ print(f"Exported {bytes_written} bytes of audio data")
 parser.export_chunk('fmt ', "format_chunk.bin")
 parser.export_chunk('data', "data_chunk.bin")
 
-# List all available chunks before exporting
+# List all available chunks before exporting. Each ID maps to a list of
+# occurrences, so iterate the inner list.
 chunks = parser.list_chunks()
-for chunk_id, info in chunks.items():
-    print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
+for chunk_id, occurrences in chunks.items():
+    for info in occurrences:
+        print(f"Chunk '{chunk_id}': {info['size']} bytes at offset {info['offset']}")
 ```
 
 ### Modifying and Writing WAV Files
@@ -155,6 +161,54 @@ print(f"Wrote {bytes_written} bytes")
 > **Note:** `write_wav` always writes the `fmt ` chunk first, then `data`, then any
 > remaining chunks in sorted order, so the output is not guaranteed to be byte-for-byte
 > identical to the input. See [Limitations](#limitations).
+
+### Reading Recorder Metadata
+
+Field recorders embed rich metadata inside the WAV container. One call surfaces
+whichever standards a file contains:
+
+```python
+from riffy import read_metadata
+
+meta = read_metadata("recording.wav")
+print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+
+if meta.guano is not None:
+    print(meta.guano.timestamp)       # timezone-aware datetime
+    print(meta.guano.loc_position)    # (lat, lon)
+    print(meta.guano.make, meta.guano.model)
+
+if meta.audiomoth is not None:
+    print(meta.audiomoth.device_id, meta.audiomoth.gain)
+```
+
+Or drive riffy from the command line (standard library only). Installing the
+package puts a `riffy` command on your PATH; `python -m riffy …` is equivalent.
+
+```bash
+# Read commands
+riffy recording.wav                 # inspect metadata (human-readable; the default)
+riffy inspect recording.wav --json  # JSON-serializable dump
+riffy diff a.wav b.wav              # chunk + metadata differences (--json, --all)
+riffy chunks recording.wav          # list every chunk with size and offset
+riffy info recording.wav            # audio format and file details
+riffy export recording.wav --audio out.raw           # export raw audio
+riffy export recording.wav --chunk guan guan.bin     # export a chunk by ID
+
+# Write commands — a DRY RUN by default; add --apply to write.
+# Writes are atomic; --backup keeps a .bak, --force-rf64 emits the large-file form.
+riffy set recording.wav --guano 'Make=Riffy' --guano 'WA|Prefix=SITE7' --apply
+riffy set recording.wav --info 'IART=Field Team' --remove-info ICMT --apply
+riffy set recording.wav --bext 'description=Dawn chorus' --bext 'version=2' --apply
+riffy chunk add recording.wav NOTE note.bin --apply --backup
+riffy chunk copy recording.wav guan --from other.wav --apply
+riffy chunk remove recording.wav guan --apply
+```
+
+riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and
+iXML. See the [Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/)
+for typed read/write examples and the device-support matrix, and the
+[CLI reference](https://jmcmeen.github.io/riffy/cli/) for every subcommand.
 
 ### Getting Detailed File Information
 
@@ -189,8 +243,8 @@ Output example:
   "audio_data_size": 617400,
   "sample_count": 154350,
   "chunks": {
-    "fmt ": 16,
-    "data": 617400
+    "fmt ": [16],
+    "data": [617400]
   }
 }
 ```
@@ -200,7 +254,9 @@ Output example:
 Currently, Riffy supports:
 
 - **WAV Files**: PCM (uncompressed) audio only
+- **RF64 / BW64**: 64-bit large files (above 4 GB) via the `ds64` chunk, read and write
 - **RIFF Chunks**: Standard chunk parsing, modification, and writing for WAV files
+- **Recorder Metadata**: GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments (read-only), and iXML (read-only)
 
 ### Planned Support
 
@@ -211,10 +267,18 @@ Currently, Riffy supports:
 ## Limitations
 
 - **PCM only**: Non-PCM (compressed) WAV files are rejected with `UnsupportedFormatError`.
-- **Unique chunk IDs**: `chunks` is keyed by chunk ID, so files containing multiple
-  chunks with the same ID (e.g. several `LIST` chunks) keep only the last one.
+- **Multiple chunks per ID**: `chunks` maps each chunk ID to a list of every
+  occurrence in file order, so files containing multiple chunks with the same ID
+  (e.g. several `LIST` chunks) preserve all of them. Use `get_chunk(id)` for the
+  common single-occurrence case.
 - **Chunk ordering on write**: `write_wav` emits `fmt ` then `data` then remaining
   chunks sorted by ID, so a parse/write round-trip may not be byte-for-byte identical.
+  (Classic WAV that fits in 32-bit sizes is written byte-for-byte identically; the
+  RF64/BW64 form is used only when a size crosses the 4 GB limit.)
+- **AudioMoth parsing is best-effort**: the comment format is undocumented and
+  firmware-dependent. riffy decodes each field independently (partial extraction)
+  and always keeps the raw comment string; newer firmware may leave some fields
+  unparsed.
 
 ## Requirements
 

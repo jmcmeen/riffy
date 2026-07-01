@@ -1,398 +1,108 @@
 # Riffy Examples
 
-This directory contains example scripts demonstrating how to use the riffy library.
+Runnable scripts demonstrating riffy, from basic WAV parsing through the v0.3.0
+recorder-metadata layer. There are two parallel suites:
 
-## Available Examples
+- **`python/`** — library examples using the `riffy` Python API directly.
+- **`bash/`** — shell examples driving the `riffy` command-line interface.
 
-### 1. `example.py` - Basic WAV File Parsing
+Each script is self-contained and cleans up after itself.
 
-Comprehensive example showing basic riffy functionality.
+## Running
 
-**Features Demonstrated:**
-- Creating a sample WAV file (auto-generated if not present)
-- Parsing WAV files
-- Accessing format information
-- Accessing raw audio data
-- Iterating through RIFF chunks
-- Error handling
-- JSON output
+Install riffy (Python 3.10 or newer); this also puts the `riffy` command on your
+PATH, which the bash examples use:
 
-**Usage:**
 ```bash
-python example.py
+pip install -e .   # from the riffy root, or: pip install riffy
 ```
 
-**What it does:**
-1. Creates a sample WAV file if `example.wav` doesn't exist
-2. Parses the WAV file
-3. Displays format information (sample rate, channels, bit depth, etc.)
-4. Shows file information (size, duration, sample count)
-5. Lists all RIFF chunks
-6. Shows raw audio data (first 16 bytes)
-7. Provides detailed chunk information
-8. Outputs complete information as formatted JSON
-
-**Output Example:**
-```
-============================================================
-Riffy - WAV File Parser Example
-============================================================
-
-Creating sample WAV file: example.wav
-Sample file created successfully!
-
-Parsing: example.wav
-
-Format Information:
-  Sample Rate: 44,100 Hz
-  Channels: 2
-  Bit Depth: 16 bits
-  Audio Format: PCM
-  Byte Rate: 176,400 bytes/sec
-  Block Align: 4 bytes
-
-File Information:
-  File Size: 176,444 bytes
-  Duration: 1.00 seconds
-  Audio Data Size: 176,400 bytes
-  Sample Count: 44,100
-
-RIFF Chunks:
-  'fmt ': 16 bytes
-  'data': 176,400 bytes
-```
-
----
-
-### 2. `export_chunks.py` - Exporting Chunks to Binary Files
-
-Complete example demonstrating chunk export functionality.
-
-**Features Demonstrated:**
-- Creating sample WAV files
-- Listing available chunks
-- Exporting specific chunks to binary files
-- Exporting raw audio data
-- Comparing export methods
-- Batch exporting all chunks
-- Error handling
-
-**Usage:**
 ```bash
-python export_chunks.py
+make examples            # both suites, from the project root
+make examples-python     # just the Python suite
+make examples-bash       # just the bash suite
+
+python examples/python/run_all.py        # all Python examples (add -v to stream)
+python examples/python/guano_metadata.py # just one Python example
+
+bash examples/bash/run_all.sh            # all bash examples (add -v to stream)
+bash examples/bash/set_guano.sh          # just one bash example
 ```
 
-**What it does:**
+The bash suite needs `riffy` on PATH. If it isn't installed as a command, set
+`RIFFY="python -m riffy"` (see `bash/_helpers.sh`).
 
-#### Part 1: Export Demonstration
-1. Creates a sample WAV file (`example_audio.wav`)
-2. Parses the file and displays information
-3. Lists all available chunks with sizes and offsets
-4. Exports format chunk to `format_chunk.bin`
-5. Exports data chunk using `export_chunk()` method
-6. Exports audio data using `export_audio_data()` convenience method
-7. Verifies both methods produce identical output
-8. Exports all chunks to `exported_chunks/` directory
-9. Cleans up all generated files
+## Python suite (`python/`)
 
-#### Part 2: Error Handling Examples
-1. Demonstrates error when exporting before parsing
-2. Shows error when requesting non-existent chunk
-3. Shows successful export
+### Core & chunk modification
 
-**Output Example:**
-```
-Created example WAV file: example_audio.wav
-
-WAV File Information:
-  Sample Rate: 44100 Hz
-  Channels: 2
-  Bits per Sample: 16
-  Duration: 1.00 seconds
-  Audio Data Size: 176,400 bytes
-
-Available Chunks:
-  'fmt ': 16 bytes at offset 20
-  'data': 176,400 bytes at offset 44
-
-Exported format chunk: 16 bytes → format_chunk.bin
-Exported data chunk: 176,400 bytes → audio_data_v1.bin
-Exported audio data: 176,400 bytes → audio_data_v2.bin
-
-✓ Both export methods produced identical output
-
-Exporting all chunks:
-  fmt  → exported_chunks/fmt.bin (16 bytes)
-  data → exported_chunks/data.bin (176,400 bytes)
-
-Export complete!
-```
-
----
-
-### 3. Chunk Modification Examples
-
-Each script below demonstrates a single chunk-modification operation. They are
-fully self-contained: each creates its own test WAV file in a temporary
-directory, performs the operation, then re-parses the output to verify the
-result. Nothing is left behind on disk.
-
-| Script | Demonstrates |
+| Script | Use case |
 | --- | --- |
-| `replace_chunk.py` | Replacing an existing chunk's data (`replace_chunk()`), reading the new audio from a binary file. |
-| `add_chunk.py` | Adding new metadata chunks (`add_chunk()`) such as `INFO`, `ICMT`, `ICOP`. |
-| `set_chunk.py` | Add-or-replace with `set_chunk()` — first call adds, second replaces in place. |
-| `copy_chunk.py` | Copying chunks between files with `copy_chunk_from_parser()`. |
-| `overwrite_wav.py` | The `overwrite` guard on `write_wav()` — overwriting the source is refused unless `overwrite=True`. |
-| `complete_workflow.py` | A full pipeline: parse → back up audio → replace audio → add metadata → write → verify. |
-
-**Usage:**
-```bash
-python replace_chunk.py
-python add_chunk.py
-python set_chunk.py
-python copy_chunk.py
-python overwrite_wav.py
-python complete_workflow.py
-```
-
-**Output Example (`replace_chunk.py`):**
-```
-======================================================================
-RIFFY - Replace a chunk from a binary file
-======================================================================
-
-Created WAV:    original.wav
-Created binary: new_audio.bin (10,000 bytes)
-
-Original audio size: 176,400 bytes
-New audio size:      10,000 bytes
-
-Wrote 10,044 bytes to modified.wav
-Audio matches replacement: True
-
-✓ Done
-```
-
----
-
-### 4. `practical_demo.py` - All Modifications in One Script
-
-A single script that bundles the chunk-modification operations above
-(replace, add, copy, overwrite, and a complete workflow) into one run, each
-against temporary files. Useful as a quick end-to-end smoke test of the
-modification API.
-
-**Usage:**
-```bash
-python practical_demo.py
-```
-
----
-
-## Running Examples
-
-### Prerequisites
-
-Ensure riffy is installed:
-
-```bash
-# From the riffy root directory
-pip install -e .
-
-# Or if installed from PyPI
-pip install riffy
-```
-
-### Run All Examples
-
-```bash
-# Navigate to examples directory
-cd examples
-
-# Run basic parsing example
-python example.py
-
-# Run export example
-python export_chunks.py
-```
-
-### Run from Root Directory
-
-```bash
-# Run basic example
-python examples/example.py
-
-# Run export example
-python examples/export_chunks.py
-```
-
-## Example Files Generated
-
-Both examples create temporary files during execution:
-
-**`example.py` creates:**
-- `example.wav` - Sample WAV file (kept for future runs)
-
-**`export_chunks.py` creates and cleans up:**
-- `example_audio.wav` - Temporary WAV file (deleted after run)
-- `format_chunk.bin` - Exported format chunk (deleted)
-- `audio_data_v1.bin` - Exported via export_chunk (deleted)
-- `audio_data_v2.bin` - Exported via export_audio_data (deleted)
-- `exported_chunks/` - Directory with all chunks (deleted)
-- `test.wav` - Temporary file for error examples (deleted)
-- `output.bin` - Temporary export file (deleted)
-
-## Understanding the Code
-
-### Basic Parsing Pattern
-
-```python
-from riffy import WAVParser
-
-# Create parser (the file is parsed automatically on initialization)
-parser = WAVParser("audio.wav")
-
-# Get the parsed information
-info = parser.get_info()
-
-# Access information
-print(f"Sample Rate: {info['format']['sample_rate']} Hz")
-print(f"Duration: {info['duration_seconds']:.2f} seconds")
-```
-
-### Export Pattern
-
-```python
-from riffy import WAVParser
-
-# Parse file (automatic on initialization)
-parser = WAVParser("audio.wav")
-
-# Export audio data (most common)
-parser.export_audio_data("output.bin")
-
-# Or export specific chunks
-parser.export_chunk('fmt ', "format.bin")
-parser.export_chunk('data', "data.bin")
-```
-
-### Error Handling Pattern
-
-```python
-from riffy import WAVParser, InvalidWAVFormatError, CorruptedFileError
-
-try:
-    parser = WAVParser("audio.wav")
-    info = parser.get_info()
-    # Process file...
-except FileNotFoundError:
-    print("File not found")
-except InvalidWAVFormatError as e:
-    print(f"Invalid WAV format: {e}")
-except CorruptedFileError as e:
-    print(f"Corrupted file: {e}")
-```
-
-## Modifying Examples
-
-Feel free to modify these examples for your own use:
-
-### Use Your Own WAV Files
-
-In `example.py`, change the `wav_file` variable:
-
-```python
-wav_file = "path/to/your/file.wav"
-```
-
-Then comment out or remove the auto-generation code:
-
-```python
-# Comment these lines out if using your own file
-# if not Path(wav_file).exists():
-#     print(f"\nCreating sample WAV file: {wav_file}")
-#     create_sample_wav(wav_file)
-```
-
-### Export to Different Locations
-
-In `export_chunks.py`, modify the output paths:
-
-```python
-# Change export directory
-export_dir = Path("/path/to/your/exports")
-export_dir.mkdir(exist_ok=True)
-
-# Change individual file paths
-parser.export_audio_data("/custom/path/audio.bin")
-```
-
-### Add More Processing
-
-Both examples can be extended with additional processing:
-
-```python
-# After parsing
-info = parser.get_info()
-
-# Calculate additional metrics
-duration_minutes = info['duration_seconds'] / 60
-file_size_mb = info['file_size'] / (1024 * 1024)
-
-print(f"Duration: {duration_minutes:.2f} minutes")
-print(f"File size: {file_size_mb:.2f} MB")
-
-# Process audio data
-audio_data = parser.audio_data
-# ... your processing code here ...
-```
-
-## Troubleshooting
-
-### "Module 'riffy' not found"
-
-Make sure riffy is installed:
-```bash
-pip install riffy
-# or
-pip install -e .  # from riffy root directory
-```
-
-### "File not found" errors
-
-The examples should auto-generate sample files. If you see this error:
-1. Check you're running from the correct directory
-2. Check file permissions
-3. Try running with `python -u example.py` for unbuffered output
-
-### Import errors
-
-If you see import errors, ensure you're using Python 3.8+:
-```bash
-python --version  # Should be 3.8 or higher
-```
-
-## Additional Resources
-
-- [Main README](../README.md) - Full riffy documentation
-- [API Reference](../README.md#api-reference) - Detailed API documentation
-- [Tests](../tests/) - Comprehensive test examples
-- [GitHub Issues](https://github.com/jmcmeen/riffy/issues) - Report problems or ask questions
-
-## Contributing Examples
-
-Have a useful example? Consider contributing:
-
-1. Create your example script
-2. Add type hints and docstrings
-3. Test it thoroughly
-4. Add documentation to this README
-5. Submit a pull request
-
-Good example ideas:
-- Working with specific audio formats
-- Batch processing multiple files
-- Converting between formats
-- Analyzing audio properties
-- Integration with audio processing libraries
+| `example.py` | Basic parsing — format info, audio data, chunk iteration, JSON output. |
+| `export_chunks.py` | Export individual chunks and raw audio to `.bin` files. |
+| `replace_chunk.py` | Replace an existing chunk's data with `replace_chunk()`. |
+| `add_chunk.py` | Add metadata chunks with `add_chunk()`. |
+| `set_chunk.py` | Add-or-replace with `set_chunk()`. |
+| `copy_chunk.py` | Copy chunks between files with `copy_chunk_from_parser()`. |
+| `overwrite_wav.py` | The `overwrite=True` guard on `write_wav()`. |
+| `complete_workflow.py` | Full pipeline: parse → replace audio → add metadata → write → verify. |
+| `practical_demo.py` | Bundles the chunk-modification operations into one smoke-test run. |
+
+### Recorder metadata (v0.3.0)
+
+| Script | Use case |
+| --- | --- |
+| `guano_metadata.py` | GUANO (`guan`) — typed fields and vendor namespaces. |
+| `info_metadata.py` | RIFF INFO (`LIST`/`INFO`) via friendly attributes and raw FOURCCs. |
+| `bext_metadata.py` | Broadcast Wave (`bext`), with version-gated fields. |
+| `audiomoth_comment.py` | Decode an AudioMoth `ICMT` comment, then normalize with `to_guano()`. |
+| `ixml_metadata.py` | Read an `iXML` document as a nested dict / via `find()`. |
+| `rf64_largefile.py` | Write the RF64/BW64 large-file form with `write_wav(force_rf64=True)`. |
+| `read_metadata_unified.py` | Detect every standard at once with `read_metadata()` / `dump_metadata()`. |
+| `batch_correct_guano.py` | Batch-fix a GUANO field across a folder — dry-run, atomic writes, `--backup`, verified. |
+
+## Bash suite (`bash/`)
+
+Each bash example mirrors a Python example's intent, but performs the work
+through the `riffy` CLI. It synthesizes a sample WAV in a scratch directory (via
+a short Python snippet in `_helpers.sh`, since the CLI is about editing existing
+files) and then operates on it.
+
+| Script | CLI exercised | Mirrors |
+| --- | --- | --- |
+| `inspect.sh` | `riffy inspect` (text + `--json`) | `example.py`, `read_metadata_unified.py` |
+| `chunks.sh` | `riffy chunks` | `example.py` |
+| `info.sh` | `riffy info` | `example.py` |
+| `export_chunks.sh` | `riffy export --chunk/--audio` | `export_chunks.py` |
+| `set_guano.sh` | `riffy set --guano` | `guano_metadata.py` |
+| `set_info.sh` | `riffy set --info` / `--remove-info` | `info_metadata.py` |
+| `set_bext.sh` | `riffy set --bext` | `bext_metadata.py` |
+| `chunk_add.sh` | `riffy chunk add` | `add_chunk.py` |
+| `chunk_replace_set.sh` | `riffy chunk set` / `replace` | `set_chunk.py`, `replace_chunk.py` |
+| `chunk_copy.sh` | `riffy chunk copy --from` | `copy_chunk.py` |
+| `chunk_remove.sh` | `riffy chunk remove` | (new — no library-example equivalent) |
+| `overwrite_guard.sh` | dry-run vs `--apply` write guard | `overwrite_wav.py` |
+| `workflow.sh` | `set` + `chunk add` + `diff` + `inspect` | `complete_workflow.py` |
+| `audiomoth_inspect.sh` | `riffy inspect` on an AudioMoth `ICMT` file | `audiomoth_comment.py` |
+| `ixml_inspect.sh` | `riffy inspect` on an iXML file | `ixml_metadata.py` |
+| `rf64_largefile.sh` | `riffy set --force-rf64` | `rf64_largefile.py` |
+| `diff.sh` | `riffy diff` (text + `--json`) | round-trip verification |
+| `batch_correct_guano.sh` | `find … -exec riffy set --guano …` | `batch_correct_guano.py` |
+
+`practical_demo.py` has no standalone bash mirror — it is a bundled smoke test,
+a role `bash/run_all.sh` already fills for the bash suite. The AudioMoth and iXML
+decoders have no dedicated CLI verb, so their bash examples surface those fields
+through `riffy inspect` rather than a like-for-like command.
+
+## Notes
+
+- `python/example.py` keeps an `example.wav` (git-ignored) beside it for reuse;
+  every other example writes to a temporary directory and leaves nothing behind.
+- Not seeing riffy? Install it (above) and check `python --version` is 3.10+.
+
+## More
+
+- [Documentation site](https://jmcmeen.github.io/riffy/) — usage guide,
+  [Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/),
+  [CLI reference](https://jmcmeen.github.io/riffy/cli/), and API reference
+- [Main README](../README.md) and [tests](../tests/)

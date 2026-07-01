@@ -58,8 +58,9 @@ def main() -> None:
         parser = WAVParser(wav_path)
         print(f"\nOriginal chunks: {list(parser.chunks.keys())}")
 
-        # Chunk IDs must be exactly 4 ASCII characters. add_chunk() raises if
-        # the chunk already exists (use set_chunk() for add-or-replace).
+        # Chunk IDs must be exactly 4 ASCII characters. add_chunk() appends a
+        # new occurrence even if the ID already exists (use set_chunk() to
+        # add-or-replace the first occurrence instead).
         parser.add_chunk("INFO", b"Artist: Demo Artist\x00")
         parser.add_chunk("ICMT", b"This is a comment\x00")
         parser.add_chunk("ICOP", b"Copyright 2026\x00")
@@ -70,7 +71,7 @@ def main() -> None:
 
         verify = WAVParser(output_path)
         print(f"Verified chunks: {list(verify.chunks.keys())}")
-        print(f"INFO content:    {verify.chunks['INFO'].data}")
+        print(f"INFO content:    {verify.get_chunk('INFO').data}")
         print("\n✓ Done")
 
 

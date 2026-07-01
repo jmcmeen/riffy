@@ -209,4 +209,7 @@ deploy.sh
 
 # riffy: generated example/test audio artifacts
 *.wav
-/.claude
+.claude/settings.local.json
+/.plans
+/.dev-data
+

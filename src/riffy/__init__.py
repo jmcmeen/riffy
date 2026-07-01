@@ -20,10 +20,21 @@ Basic Usage:
     >>> print(f"Duration: {info['duration_seconds']:.2f} seconds")
 """
 
-__version__ = "0.2.1"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
+try:
+    # The version is sourced from git tags at build time (hatch-vcs) and read
+    # back here from the installed distribution's metadata, so ``__version__``
+    # always reflects the actual release rather than a hand-maintained literal.
+    __version__ = _version("riffy")
+except PackageNotFoundError:  # pragma: no cover - only when running un-installed
+    __version__ = "0.0.0.dev0"
+
 __author__ = "John McMeen"
 
 # Import main classes and functions
+from .diff import ChunkDelta, FieldDelta, WavDiff, diff
 from .exceptions import (
     ChunkError,
     CorruptedFileError,
@@ -33,6 +44,16 @@ from .exceptions import (
     RiffyError,
     UnsupportedFormatError,
     WAVError,
+)
+from .metadata import (
+    AudioMothMetadata,
+    BextMetadata,
+    GuanoMetadata,
+    InfoMetadata,
+    IXmlMetadata,
+    RecordingMetadata,
+    dump_metadata,
+    read_metadata,
 )
 from .wav import WAVChunk, WAVFormat, WAVParser
 
@@ -44,6 +65,20 @@ __all__ = [
     "WAVParser",
     "WAVFormat",
     "WAVChunk",
+    # Recorder metadata
+    "read_metadata",
+    "dump_metadata",
+    "RecordingMetadata",
+    "GuanoMetadata",
+    "InfoMetadata",
+    "BextMetadata",
+    "AudioMothMetadata",
+    "IXmlMetadata",
+    # Diffing
+    "diff",
+    "WavDiff",
+    "ChunkDelta",
+    "FieldDelta",
     # Exceptions
     "RiffyError",
     "WAVError",

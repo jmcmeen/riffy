@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Example: add-or-replace a chunk with set_chunk().
+Example: copy chunks between two WAV files.
 
-Demonstrates ``WAVParser.set_chunk()``, the convenience method that adds a
-chunk if it does not exist and replaces it if it does. The chunk count stays
-constant on the second call while the content is updated.
+Demonstrates ``WAVParser.copy_chunk_from_parser()`` by copying both the audio
+('data') and a metadata ('INFO') chunk from a source file into a destination
+file, then writing and verifying the result.
 """
 
 import struct
@@ -46,34 +46,37 @@ def create_test_wav(filepath: Path, duration_seconds: float = 1.0) -> None:
 
 def main() -> None:
     print("=" * 70)
-    print("RIFFY - set_chunk() add-or-replace")
+    print("RIFFY - Copy chunks between files")
     print("=" * 70)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        wav_path = tmpdir / "original.wav"
-        output_path = tmpdir / "updated.wav"
+        source_path = tmpdir / "source.wav"
+        dest_path = tmpdir / "destination.wav"
+        output_path = tmpdir / "destination_modified.wav"
 
-        create_test_wav(wav_path, duration_seconds=0.5)
+        # Two files of different lengths so the copy is observable.
+        create_test_wav(source_path, duration_seconds=0.3)
+        create_test_wav(dest_path, duration_seconds=0.5)
 
-        parser = WAVParser(wav_path)
-        print(f"\nStarting chunks: {list(parser.chunks.keys())}")
+        source = WAVParser(source_path)
+        source.add_chunk("INFO", b"Source metadata\x00")
+        destination = WAVParser(dest_path)
 
-        # First call adds the chunk because it doesn't exist yet.
-        parser.set_chunk("INFO", b"Version 1\x00")
-        print(f"\nAfter set v1:    {list(parser.chunks.keys())}")
-        print(f"INFO content:    {parser.chunks['INFO'].data}")
+        print(f"\nSource audio size:      {len(source.audio_data):,} bytes")
+        print(f"Destination audio size: {len(destination.audio_data):,} bytes")
 
-        # Second call replaces it in place -- the chunk count is unchanged.
-        parser.set_chunk("INFO", b"Version 2\x00")
-        print(f"\nAfter set v2:    {list(parser.chunks.keys())}")
-        print(f"INFO content:    {parser.chunks['INFO'].data}")
+        # Copy the audio and the metadata chunk from source to destination.
+        destination.copy_chunk_from_parser("data", source)
+        destination.copy_chunk_from_parser("INFO", source)
+        print(f"After copy, dest audio: {len(destination.audio_data):,} bytes")
 
-        parser.write_wav(output_path)
+        destination.write_wav(output_path)
         print(f"\nWrote {output_path.name}")
 
         verify = WAVParser(output_path)
-        print(f"Verified INFO:   {verify.chunks['INFO'].data}")
+        print(f"Audio matches source: {verify.audio_data == source.audio_data}")
+        print(f"Copied INFO chunk:    {verify.get_chunk('INFO').data}")
         print("\n✓ Done")
 
 

@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history + tags so hatch-vcs derives the version
 
       - name: Set up Python
         uses: actions/setup-python@v6

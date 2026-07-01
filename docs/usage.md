@@ -19,8 +19,13 @@ print(f"Duration:    {info['duration_seconds']:.2f} s")
 ## Inspecting chunks
 
 ```python
-for chunk_id, chunk in parser.chunks.items():
-    print(f"{chunk_id!r}: {chunk.size} bytes at offset {chunk.offset}")
+# Each ID maps to a list of occurrences (a file may repeat a chunk ID).
+for chunk_id, chunk_list in parser.chunks.items():
+    for chunk in chunk_list:
+        print(f"{chunk_id!r}: {chunk.size} bytes at offset {chunk.offset}")
+
+# Fetch a single chunk (first occurrence) by ID, or None if absent:
+fmt_chunk = parser.get_chunk("fmt ")
 
 # Or get a lightweight summary:
 print(parser.list_chunks())
@@ -51,6 +56,25 @@ bytes_written = parser.write_wav("modified.wav")
     Calling `parse()` again re-reads the file from disk and discards any in-memory
     modifications. `write_wav` orders chunks as `fmt `, `data`, then the rest sorted
     by ID, so a parse/write round-trip is not guaranteed to be byte-identical.
+
+## Reading recorder metadata
+
+For field-recorder files (bat detectors, ARUs), one call surfaces every embedded
+metadata standard it finds:
+
+```python
+from riffy import read_metadata
+
+meta = read_metadata("recording.wav")
+print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+
+if meta.guano is not None:
+    print(meta.guano.timestamp, meta.guano.loc_position)
+```
+
+See the [Recorder Metadata](metadata.md) guide for GUANO, RIFF INFO, Broadcast
+Wave `bext`, AudioMoth, and iXML, and the [command-line interface](cli.md) for
+the `riffy` tool that inspects, diffs, and edits files from the shell.
 
 ## Handling errors
 
