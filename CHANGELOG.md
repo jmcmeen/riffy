@@ -88,6 +88,18 @@ core (the one breaking change — see below).
   (a within-standard normalization). Format knowledge is derived from the
   `metamoth` library and the AudioMoth firmware source, and validated against
   real device recordings (firmware ~1.0.1 and 1.6.0).
+- **iXML read support** (`riffy.metadata.IXmlMetadata`) — parses the `iXML`
+  chunk (a UTF-8 XML document used by production recorders such as Sound Devices
+  and Zoom for take/scene/track metadata) into an inspectable element tree:
+  `from_parser` / `from_bytes` to read, `find(path)` for a single ElementTree
+  path lookup, and `to_dict()` for a nested dict (repeated child tags collapse to
+  lists). NUL padding is trimmed and non-XML payloads are skipped with a warning.
+  Read-only for v0.3.0 (authoring is out of scope), and — per riffy's
+  zero-dependency promise — parsing uses the standard-library XML parser, which
+  is not hardened against hostile XML; iXML from field recorders is treated as
+  trusted input. Surfaced in the `python -m riffy` / `dump_metadata` dict output
+  under `ixml`; not part of the `RecordingMetadata` dataclass since it is
+  read-only.
 - **File diffing** — `riffy.diff(a, b)` returns a `WavDiff` comparing two WAV
   files at two levels: per-chunk deltas (added / removed / changed / unchanged,
   compared occurrence-by-occurrence and insensitive to chunk reordering) and a
