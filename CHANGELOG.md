@@ -5,10 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-07-01
 
-Work toward v0.3.0 (recorder metadata parsing). This entry covers the core
-chunk-store change that later metadata features build on.
+Recorder metadata parsing (GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth,
+iXML) plus RF64/BW64 large-file support, built on a fixed multi-chunk-per-ID
+core (the one breaking change — see below).
 
 ### Changed
 
@@ -33,6 +34,15 @@ chunk-store change that later metadata features build on.
 
 ### Added
 
+- **RF64 / BW64 large-file support.** `WAVParser` now recognizes the `RF64`
+  (EBU Tech 3306) and `BW64` (ITU-R BS.2088) forms, parses the leading `ds64`
+  chunk for 64-bit sizes, and honors the `0xFFFFFFFF` size sentinel (resolving
+  `data` from the ds64 field and other oversized chunks from its size table).
+  On write, output switches to the RF64/BW64 form only when a size crosses the
+  4 GB 32-bit limit (or when the new `write_wav(force_rf64=True)` is set),
+  emitting a `ds64` chunk and the size sentinel; otherwise classic WAV output is
+  byte-for-byte unchanged. New `WAVParser.is_rf64` / `WAVParser.riff_form`
+  expose the parsed form. Scoped to PCM as before.
 - `WAVParser.get_chunk(id)` — the first chunk with an ID, or `None`.
 - `WAVParser.get_chunks(id)` — every chunk with an ID, in file order.
 - `WAVParser.get_chunk_bytes(id)` — the raw payload of the first chunk with an

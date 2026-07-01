@@ -20,7 +20,7 @@ Basic Usage:
     >>> print(f"Duration: {info['duration_seconds']:.2f} seconds")
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 __author__ = "John McMeen"
 
 # Import main classes and functions
@@ -39,7 +39,9 @@ from .metadata import (
     BextMetadata,
     GuanoMetadata,
     InfoMetadata,
+    IXmlMetadata,
     RecordingMetadata,
+    dump_metadata,
     read_metadata,
 )
 from .wav import WAVChunk, WAVFormat, WAVParser
@@ -54,11 +56,13 @@ __all__ = [
     "WAVChunk",
     # Recorder metadata
     "read_metadata",
+    "dump_metadata",
     "RecordingMetadata",
     "GuanoMetadata",
     "InfoMetadata",
     "BextMetadata",
     "AudioMothMetadata",
+    "IXmlMetadata",
     # Exceptions
     "RiffyError",
     "WAVError",

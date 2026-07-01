@@ -57,6 +57,24 @@ bytes_written = parser.write_wav("modified.wav")
     modifications. `write_wav` orders chunks as `fmt `, `data`, then the rest sorted
     by ID, so a parse/write round-trip is not guaranteed to be byte-identical.
 
+## Reading recorder metadata
+
+For field-recorder files (bat detectors, ARUs), one call surfaces every embedded
+metadata standard it finds:
+
+```python
+from riffy import read_metadata
+
+meta = read_metadata("recording.wav")
+print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+
+if meta.guano is not None:
+    print(meta.guano.timestamp, meta.guano.loc_position)
+```
+
+See the [Recorder Metadata](metadata.md) guide for GUANO, RIFF INFO, Broadcast
+Wave `bext`, AudioMoth, and iXML, plus the `python -m riffy` inspector.
+
 ## Handling errors
 
 ```python

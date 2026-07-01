@@ -14,6 +14,8 @@ Riffy provides a pure Python implementation for working with RIFF format files, 
 - **WAV File Support**: Complete WAV file parsing with format validation
 - **RIFF Chunk Management**: Access, add, replace, copy, and remove RIFF chunks
 - **Chunk Modification & Writing**: Modify chunks in memory and write valid WAV files back to disk
+- **Recorder Metadata**: Decode GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and iXML — with a unified `read_metadata()` view and a `python -m riffy` inspector
+- **RF64 / BW64**: Read and write 64-bit large files above the 4 GB classic-WAV limit
 - **Audio Metadata Extraction**: Extract sample rate, channels, bit depth, and duration
 - **Format Validation**: Automatic validation of file format and integrity
 - **Type Safety**: Full type hints (PEP 561 `py.typed`) for better IDE support and static analysis
@@ -160,6 +162,37 @@ print(f"Wrote {bytes_written} bytes")
 > remaining chunks in sorted order, so the output is not guaranteed to be byte-for-byte
 > identical to the input. See [Limitations](#limitations).
 
+### Reading Recorder Metadata
+
+Field recorders embed rich metadata inside the WAV container. One call surfaces
+whichever standards a file contains:
+
+```python
+from riffy import read_metadata
+
+meta = read_metadata("recording.wav")
+print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+
+if meta.guano is not None:
+    print(meta.guano.timestamp)       # timezone-aware datetime
+    print(meta.guano.loc_position)    # (lat, lon)
+    print(meta.guano.make, meta.guano.model)
+
+if meta.audiomoth is not None:
+    print(meta.audiomoth.device_id, meta.audiomoth.gain)
+```
+
+Or inspect a file from the command line (standard library only):
+
+```bash
+python -m riffy recording.wav          # human-readable
+python -m riffy --json recording.wav   # JSON-serializable dump
+```
+
+riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and
+iXML. See the [Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/)
+for typed read/write examples and the device-support matrix.
+
 ### Getting Detailed File Information
 
 ```python
@@ -204,7 +237,9 @@ Output example:
 Currently, Riffy supports:
 
 - **WAV Files**: PCM (uncompressed) audio only
+- **RF64 / BW64**: 64-bit large files (above 4 GB) via the `ds64` chunk, read and write
 - **RIFF Chunks**: Standard chunk parsing, modification, and writing for WAV files
+- **Recorder Metadata**: GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments (read-only), and iXML (read-only)
 
 ### Planned Support
 
@@ -221,6 +256,12 @@ Currently, Riffy supports:
   common single-occurrence case.
 - **Chunk ordering on write**: `write_wav` emits `fmt ` then `data` then remaining
   chunks sorted by ID, so a parse/write round-trip may not be byte-for-byte identical.
+  (Classic WAV that fits in 32-bit sizes is written byte-for-byte identically; the
+  RF64/BW64 form is used only when a size crosses the 4 GB limit.)
+- **AudioMoth parsing is best-effort**: the comment format is undocumented and
+  firmware-dependent. riffy decodes each field independently (partial extraction)
+  and always keeps the raw comment string; newer firmware may leave some fields
+  unparsed.
 
 ## Requirements
 
