@@ -20,7 +20,17 @@ Basic Usage:
     >>> print(f"Duration: {info['duration_seconds']:.2f} seconds")
 """
 
-__version__ = "0.3.0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
+try:
+    # The version is sourced from git tags at build time (hatch-vcs) and read
+    # back here from the installed distribution's metadata, so ``__version__``
+    # always reflects the actual release rather than a hand-maintained literal.
+    __version__ = _version("riffy")
+except PackageNotFoundError:  # pragma: no cover - only when running un-installed
+    __version__ = "0.0.0.dev0"
+
 __author__ = "John McMeen"
 
 # Import main classes and functions
