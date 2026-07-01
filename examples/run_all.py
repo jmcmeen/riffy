@@ -20,8 +20,16 @@ EXAMPLES_DIR = Path(__file__).resolve().parent
 
 
 def _example_scripts() -> list[Path]:
-    """Return the example scripts to run, excluding this runner itself."""
-    return sorted(p for p in EXAMPLES_DIR.glob("*.py") if p.name != Path(__file__).name)
+    """Return the runnable example scripts.
+
+    Skips this runner itself and any ``_``-prefixed support module (e.g.
+    ``_helpers.py``).
+    """
+    return sorted(
+        p
+        for p in EXAMPLES_DIR.glob("*.py")
+        if p.name != Path(__file__).name and not p.name.startswith("_")
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

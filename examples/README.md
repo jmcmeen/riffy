@@ -187,7 +187,35 @@ Audio matches replacement: True
 
 ---
 
-### 4. `practical_demo.py` - All Modifications in One Script
+### 4. Recorder Metadata Examples
+
+These demonstrate the v0.3.0 recorder-metadata layer. Each script builds a test
+WAV, embeds metadata of one kind, then reads it back — so you can see the full
+write/read round-trip. Like the others, they run in a temporary directory and
+leave nothing behind.
+
+| Script | Demonstrates |
+| --- | --- |
+| `guano_metadata.py` | Author and read back a GUANO (`guan`) chunk — typed fields (timestamp with offset, location, species list) and vendor namespaces. |
+| `info_metadata.py` | Write and read RIFF INFO (`LIST`/`INFO`) tags via friendly attributes and raw FOURCCs. |
+| `bext_metadata.py` | Write and read a Broadcast Wave (`bext`) chunk, showing version-gated fields (UMID in v1+, loudness in v2+). |
+| `audiomoth_comment.py` | Decode a firmware-style AudioMoth `ICMT` comment into structured fields, then normalize it with `to_guano()`. |
+| `ixml_metadata.py` | Embed and read an `iXML` document as a nested dict / via `find()` (iXML is read-only). |
+| `rf64_largefile.py` | Write the RF64/BW64 large-file form with `write_wav(force_rf64=True)` and read `is_rf64` / `riff_form` back. |
+| `read_metadata_unified.py` | Detect every standard at once with `read_metadata()`, plus `dump_metadata()` and the `python -m riffy` inspector. |
+
+**Usage:**
+
+```bash
+python guano_metadata.py
+python audiomoth_comment.py
+python read_metadata_unified.py
+# ...etc, or run every example at once with:  make examples
+```
+
+---
+
+### 5. `practical_demo.py` - All Modifications in One Script
 
 A single script that bundles the chunk-modification operations above
 (replace, add, copy, overwrite, and a complete workflow) into one run, each
