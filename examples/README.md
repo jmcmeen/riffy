@@ -2,6 +2,17 @@
 
 This directory contains example scripts demonstrating how to use the riffy library.
 
+## Running all examples
+
+Each script is self-contained and can be run directly (`python examples/example.py`).
+To run every example at once and get a pass/fail summary:
+
+```bash
+make examples                  # from the project root
+# or, directly:
+python examples/run_all.py     # add -v to stream each example's output
+```
+
 ## Available Examples
 
 ### 1. `example.py` - Basic WAV File Parsing
