@@ -20,6 +20,7 @@ Design highlights (see the v0.3.0 plan §5.1):
 """
 
 import base64
+import re
 import warnings
 from collections.abc import Iterable, Iterator
 from datetime import datetime
@@ -29,6 +30,13 @@ from .base import decode_text, pad_to_even
 
 #: The GUANO sub-chunk ID.
 CHUNK_ID = "guan"
+
+#: Characters stripped from the ends of each field line: whitespace plus NUL,
+#: since some writers pad the chunk with NUL bytes instead of spaces.
+_STRIP_CHARS = " \t\n\r\x0b\x0c\x00"
+
+#: A trailing UTC offset ``±H:MM`` or ``±HH:MM`` at the end of a timestamp.
+_OFFSET_RE = re.compile(r"([+-])(\d{1,2}):(\d{2})$")
 
 #: The namespace GUANO uses for its own ``Version`` field. Every other
 #: well-known field lives in the empty (base) namespace.
@@ -71,9 +79,11 @@ class GuanoMetadata:
         self = cls()
         text = decode_text(data, context="guan")
         for raw_line in text.split("\n"):
-            line = raw_line.strip()
+            # Strip surrounding whitespace and NUL bytes: some writers (e.g.
+            # Wildlife Acoustics) pad the chunk with NULs rather than spaces.
+            line = raw_line.strip(_STRIP_CHARS)
             if not line:
-                continue  # empty lines (and whitespace padding) are ignored
+                continue  # empty lines and whitespace/NUL padding are ignored
             if ":" not in line:
                 warnings.warn(
                     f"guan: skipping malformed line without ':' separator: {line!r}",
@@ -501,6 +511,12 @@ def _parse_timestamp(value: str) -> datetime | None:
     # accepts it on Python 3.10 (native 'Z' support only landed in 3.11).
     if text[-1] in ("Z", "z"):
         text = text[:-1] + "+00:00"
+    # Zero-pad a single-digit offset hour: Wildlife Acoustics emits e.g.
+    # '...-4:00', which fromisoformat rejects; normalize to '...-04:00'.
+    offset = _OFFSET_RE.search(text)
+    if offset:
+        sign, hh, mm = offset.groups()
+        text = f"{text[: offset.start()]}{sign}{int(hh):02d}:{mm}"
     try:
         return datetime.fromisoformat(text)
     except ValueError:

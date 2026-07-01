@@ -1,5 +1,6 @@
 """Tests for riffy.metadata.guano (GUANO read/write, the v0.3.0 flagship)."""
 
+import warnings
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -266,6 +267,34 @@ class TestAbsentFields:
     def test_empty_timestamp_value_returns_none(self):
         g = GuanoMetadata.from_bytes(b"GUANO|Version: 1.0\nTimestamp: \n")
         assert g.timestamp is None
+
+
+class TestRealWorldWildlifeAcoustics:
+    """Regression cases captured from a real Song Meter Micro `guan` chunk."""
+
+    def test_unpadded_offset_hour_and_space_separator(self):
+        # WA emits '2023-08-14 21:01:18-4:00': space separator + single-digit
+        # offset hour, neither of which datetime.fromisoformat accepts raw.
+        g = GuanoMetadata.from_bytes(b"GUANO|Version: 1.0\nTimestamp: 2023-08-14 21:01:18-4:00\n")
+        assert g.timestamp == datetime(2023, 8, 14, 21, 1, 18, tzinfo=timezone(timedelta(hours=-4)))
+        # The raw field is preserved verbatim for round-trip.
+        assert g.get("", "Timestamp") == "2023-08-14 21:01:18-4:00"
+
+    def test_nul_padded_trailing_line_ignored_without_warning(self):
+        # The chunk is NUL-padded rather than space-padded.
+        raw = b"GUANO|Version: 1.0\nSamplerate:44100\n\x00"
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # any warning fails the test
+            g = GuanoMetadata.from_bytes(raw)
+        assert g.samplerate == 44100
+        assert len(g.fields) == 2
+
+    def test_nested_pipe_vendor_key_round_trips(self):
+        raw = b'GUANO|Version: 1.0\nWA|Song Meter|Audio settings: [{"rate":44100}]\n'
+        g = GuanoMetadata.from_bytes(raw)
+        assert g.get("WA", "Song Meter|Audio settings") == '[{"rate":44100}]'
+        out = GuanoMetadata.from_bytes(g.to_chunk_bytes())
+        assert out.get("WA", "Song Meter|Audio settings") == '[{"rate":44100}]'
 
 
 class TestMappingHelpers:

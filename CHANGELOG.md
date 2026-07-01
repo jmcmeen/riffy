@@ -51,6 +51,33 @@ chunk-store change that later metadata features build on.
   round-trip, as the spec requires. `GUANO|Version` is always serialized first,
   multiline values are `\n`-escaped, output is even-padded, and non-UTF-8
   payloads fall back to latin-1 with a warning.
+- **RIFF INFO read/write** (`riffy.metadata.InfoMetadata`) — decodes the
+  `LIST`/`INFO` block into friendly attributes (`title`, `artist`, `comment`,
+  `software`, ...) mapped from the standard FOURCCs, with raw FOURCC access via
+  `get` / `set` / `tags`. Tolerates NUL-terminated and non-terminated values,
+  honors even-byte padding, and is truncation-safe. When a file has several
+  `LIST` chunks, `from_parser` selects the `INFO` one and `write_to_parser`
+  updates only it, leaving other lists (e.g. `adtl`) untouched. This is also the
+  carrier the forthcoming AudioMoth comment decoder reads from.
+- **Broadcast Wave `bext` read/write** (`riffy.metadata.BextMetadata`) — parses
+  the fixed EBU Tech 3285 binary layout into typed fields (description,
+  originator, origination date/time, 64-bit `time_reference`, `umid`, and the v2
+  loudness fields), with version gating: `umid` requires v1+, loudness requires
+  v2+. Writing is table-driven off `version`, zero-fills regions the version
+  does not define, and preserves loudness values verbatim (never computed).
+  Tolerates truncated chunks and NUL-padded strings.
+- **AudioMoth comment decoding** (`riffy.metadata.AudioMothMetadata`) — decodes
+  the free-text firmware comment string (RIFF INFO `ICMT`, device string in
+  `IART`) into structured fields: recording timestamp (day-first, timezone-aware
+  with UTC offset), device/deployment ID, gain (numeric settings normalized to
+  the `low`…`high` word scale), battery, temperature, external-mic flag,
+  amplitude threshold / trigger duration, frequency filter, and
+  recording-stopped reason. Each field is parsed with its own tolerant regex, so
+  extraction is **partial**: a failure in one clause never discards the others.
+  A `to_guano()` helper maps the parsed fields onto GUANO-equivalent keys
+  (a within-standard normalization). Format knowledge is derived from the
+  `metamoth` library and the AudioMoth firmware source, and validated against
+  real device recordings (firmware ~1.0.1 and 1.6.0).
 
 ## [0.2.1] - 2026-06-06
 

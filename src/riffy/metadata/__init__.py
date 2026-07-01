@@ -13,6 +13,9 @@ re-exported at the package level yet — they are reachable via
 re-export the typed metadata classes (GUANO, INFO, bext, ...) as they land.
 """
 
+from .audiomoth import AudioMothMetadata
+from .bext import BextMetadata
 from .guano import GuanoMetadata
+from .info import InfoMetadata
 
-__all__ = ["GuanoMetadata"]
+__all__ = ["AudioMothMetadata", "BextMetadata", "GuanoMetadata", "InfoMetadata"]
