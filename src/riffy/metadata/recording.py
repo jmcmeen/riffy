@@ -25,6 +25,7 @@ from .bext import BextMetadata
 from .guano import GuanoMetadata
 from .info import InfoMetadata
 from .ixml import IXmlMetadata
+from .wamd import WamdMetadata
 
 
 @dataclass
@@ -39,6 +40,7 @@ class RecordingMetadata:
     info: InfoMetadata | None = None
     bext: BextMetadata | None = None
     audiomoth: AudioMothMetadata | None = None
+    wamd: WamdMetadata | None = None
 
     @classmethod
     def from_parser(cls, parser: WAVParser) -> "RecordingMetadata":
@@ -48,6 +50,7 @@ class RecordingMetadata:
             info=InfoMetadata.from_parser(parser),
             bext=BextMetadata.from_parser(parser),
             audiomoth=AudioMothMetadata.from_parser(parser),
+            wamd=WamdMetadata.from_parser(parser),
         )
 
     @property
@@ -62,6 +65,8 @@ class RecordingMetadata:
             present.append("bext")
         if self.audiomoth is not None:
             present.append("audiomoth")
+        if self.wamd is not None:
+            present.append("wamd")
         return tuple(present)
 
 
@@ -89,9 +94,9 @@ def dump_metadata(path: str | Path) -> dict:
 
     A convenience for inspection and tooling (it backs ``python -m riffy``). The
     returned dict has ``file``, ``riff_form``, ``format``, ``sources``, and one
-    entry per standard (``guano``, ``info``, ``bext``, ``audiomoth``, ``ixml``),
-    each ``None`` when absent. All values are JSON-safe: datetimes become ISO
-    strings and binary fields (e.g. bext ``umid``) become hex strings.
+    entry per standard (``guano``, ``info``, ``bext``, ``audiomoth``, ``wamd``,
+    ``ixml``), each ``None`` when absent. All values are JSON-safe: datetimes
+    become ISO strings and binary fields (e.g. bext ``umid``) become hex strings.
 
     Args:
         path: Path to a WAV file.
@@ -116,6 +121,7 @@ def dump_metadata(path: str | Path) -> dict:
         "info": dict(meta.info.tags) if meta.info is not None else None,
         "bext": _bext_to_dict(meta.bext),
         "audiomoth": _audiomoth_to_dict(meta.audiomoth),
+        "wamd": meta.wamd.to_dict() if meta.wamd is not None else None,
         "ixml": ixml.to_dict() if ixml is not None else None,
     }
 

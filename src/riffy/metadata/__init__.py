@@ -19,6 +19,7 @@ from .guano import GuanoMetadata
 from .info import InfoMetadata
 from .ixml import IXmlMetadata
 from .recording import RecordingMetadata, dump_metadata, read_metadata
+from .wamd import WamdMetadata
 
 __all__ = [
     "AudioMothMetadata",
@@ -27,6 +28,7 @@ __all__ = [
     "InfoMetadata",
     "IXmlMetadata",
     "RecordingMetadata",
+    "WamdMetadata",
     "dump_metadata",
     "read_metadata",
 ]

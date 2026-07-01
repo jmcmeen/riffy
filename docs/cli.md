@@ -77,7 +77,7 @@ The mutating commands (`set` and `chunk …`) share one safety contract:
 
 ### `set`
 
-Edit recorder-metadata fields across the three editable standards. Selectors are
+Edit recorder-metadata fields across the four editable standards. Selectors are
 repeatable and can be mixed in one call:
 
 ```bash
@@ -95,11 +95,17 @@ riffy set clip.wav --remove-info ICMT --apply
 
 # Broadcast Wave bext — by attribute name (ints are coerced)
 riffy set clip.wav --bext 'description=Dawn chorus' --bext 'version=2' --apply
+
+# Wildlife Acoustics WAMD — 'GPS=<lat> <lon>' for coordinates, or KEY=VAL for text tags
+riffy set sm.wav --wamd 'GPS=10.31796 -84.07411' --apply
+riffy set sm.wav --wamd 'notes=dawn chorus' --apply
 ```
 
-Removals: `--remove-guano NS|KEY` and `--remove-info FOURCC` (bext is a fixed
-struct, so it has no per-field removal). Creating a fresh GUANO block requires
-`GUANO|Version` to be set, as the spec mandates.
+Removals: `--remove-guano NS|KEY`, `--remove-info FOURCC`, and `--remove-wamd KEY`
+(bext is a fixed struct, so it has no per-field removal). Creating a fresh GUANO
+block requires `GUANO|Version` to be set, as the spec mandates. Setting WAMD
+`GPS` preserves the existing datum and altitude and leaves every other WAMD entry
+byte-stable.
 
 ### `chunk`
 

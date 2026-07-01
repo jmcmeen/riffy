@@ -23,6 +23,7 @@ meta.guano          # GuanoMetadata | None
 meta.info           # InfoMetadata  | None
 meta.bext           # BextMetadata  | None
 meta.audiomoth      # AudioMothMetadata | None
+meta.wamd           # WamdMetadata  | None
 ```
 
 `read_metadata` deliberately does **no** cross-standard reconciliation: it
@@ -37,6 +38,7 @@ predictable and avoids baking one consumer's opinions into the library.
 | GUANO | `guan` | UTF-8 `key: value` text | `GuanoMetadata` | ✅ | ✅ |
 | RIFF INFO | `LIST`/`INFO` | ZSTR sub-chunks | `InfoMetadata` | ✅ | ✅ |
 | Broadcast Wave | `bext` | fixed binary (EBU 3285) | `BextMetadata` | ✅ | ✅ |
+| WAMD | `wamd` (or `junk`) | packed binary entries | `WamdMetadata` | ✅ | ✅ |
 | AudioMoth comment | `ICMT` free text | firmware-dependent | `AudioMothMetadata` | ✅ | — |
 | iXML | `iXML` | UTF-8 XML | `IXmlMetadata` | ✅ | — |
 
@@ -113,6 +115,35 @@ new.write_to_parser(parser)
 parser.write_wav("bwf-tagged.wav")
 ```
 
+### WAMD (`wamd`)
+
+WAMD (Wildlife Acoustics Metadata) is the vendor format Song Meter recorders
+embed — alongside GUANO, or, on older firmware, in a `junk` chunk instead. It is
+a packed binary stream of length-prefixed entries (a 16-bit id, a 32-bit length,
+then the value). riffy reads and writes it, exposing `loc_position` as a
+`(lat, lon)` tuple (decoding both the Song Meter `N/S/E/W` and EMTouch signed GPS
+dialects) plus `model`, `serial`, `firmware`, `timestamp`, and `notes`. Unknown
+tags, opaque blobs, and alignment padding round-trip byte-for-byte, so editing
+one field leaves the rest of the chunk untouched.
+
+```python
+from riffy import WAVParser, WamdMetadata
+
+parser = WAVParser("songmeter.wav")
+w = WamdMetadata.from_parser(parser)
+w.loc_position          # (10.31796, -84.07411)
+w.model, w.firmware
+
+# Correct the coordinates in place (only the GPS field changes)
+w.loc_position = (10.31801, -84.07399)
+w.write_to_parser(parser)
+parser.write_wav("songmeter-fixed.wav")
+```
+
+The WAMD-in-`junk` variant is read only when the `junk` chunk carries the
+unmistakable WAMD signature, so ordinary `junk` padding is never mistaken for
+metadata.
+
 ### AudioMoth comment
 
 AudioMoth packs device ID, timestamp, gain, battery, and (on newer firmware)
@@ -162,7 +193,7 @@ Which standard each recorder family emits, and what riffy extracts:
 
 | Device | Emits | riffy extracts |
 |---|---|---|
-| Wildlife Acoustics Song Meter | GUANO (`guan`) | full typed GUANO, vendor `WA` namespace |
+| Wildlife Acoustics Song Meter | GUANO (`guan`), WAMD (`wamd`/`junk`) | full typed GUANO + vendor `WA` namespace; WAMD location, device, timestamp |
 | Titley | GUANO | full typed GUANO |
 | Pettersson | GUANO | full typed GUANO |
 | Open Acoustic Devices | GUANO | full typed GUANO |

@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-01
+
+Wildlife Acoustics WAMD metadata support — read and write the `wamd` chunk (and
+its WAMD-in-`junk` variant), closing the last location dialect riffy could not
+correct on legacy Song Meter recordings.
+
+### Added
+
+- **Wildlife Acoustics WAMD metadata (read/write).** Parse the packed-binary
+  `wamd` chunk — and the WAMD-in-`junk` variant older firmware emits — into a
+  `WamdMetadata` view exposing `loc_position` as a `(lat, lon)` tuple plus
+  `model`, `serial`, `firmware`, `timestamp`, and the other tags. `"wamd"` now
+  appears in `read_metadata().sources`, in the `python -m riffy` inspector, and
+  in `diff`. Unknown tags, binary blobs, and alignment padding round-trip
+  byte-for-byte, so an edit touches only the field you change.
+- **`riffy set … --wamd`.** Write WAMD fields under the same safety contract as
+  GUANO/INFO/bext (dry run by default, atomic replace, `--backup`,
+  `--force-rf64`): `riffy set FILE --wamd 'GPS=<lat> <lon>'` for coordinates, or
+  `KEY=VAL` for the other text tags, with `--remove-wamd KEY` to delete one.
+
 ## [0.3.0] - 2026-07-01
 
 Recorder metadata parsing (GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth,
@@ -217,6 +237,8 @@ Python versions.
   chunk access, audio metadata extraction, a custom exception hierarchy, and
   full type hints. Zero external dependencies.
 
+[0.3.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.1
+[0.3.0]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.0
 [0.2.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jmcmeen/riffy/releases/tag/v0.2.0
 [0.1.2]: https://github.com/jmcmeen/riffy/releases/tag/v0.1.2

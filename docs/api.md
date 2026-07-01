@@ -43,6 +43,12 @@ The unified entry point and per-standard classes. See the
       members:
         - BextMetadata
 
+::: riffy.metadata.wamd
+    options:
+      show_root_heading: false
+      members:
+        - WamdMetadata
+
 ::: riffy.metadata.audiomoth
     options:
       show_root_heading: false

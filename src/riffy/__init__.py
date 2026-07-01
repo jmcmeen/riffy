@@ -52,6 +52,7 @@ from .metadata import (
     InfoMetadata,
     IXmlMetadata,
     RecordingMetadata,
+    WamdMetadata,
     dump_metadata,
     read_metadata,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "BextMetadata",
     "AudioMothMetadata",
     "IXmlMetadata",
+    "WamdMetadata",
     # Diffing
     "diff",
     "WavDiff",

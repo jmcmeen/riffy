@@ -19,7 +19,7 @@ Write commands (``set`` and ``chunk …``) share one safety contract: they are a
 are atomic (temp file + ``os.replace``); ``--backup`` keeps a ``.bak`` copy; and
 ``--force-rf64`` forces the RF64/BW64 large-file form.
 
-- ``riffy set <file> [--guano NS|KEY=VAL] [--info FOURCC=VAL] [--bext ATTR=VAL] …``
+- ``riffy set <file> [--guano NS|KEY=VAL] [--info FOURCC=VAL] [--bext ATTR=VAL] [--wamd KEY=VAL] …``
 - ``riffy chunk add|replace|set <file> ID <data-file>``
 - ``riffy chunk copy <file> ID --from <src.wav>``
 - ``riffy chunk remove <file> ID [--index N]``
@@ -39,6 +39,7 @@ from .metadata.bext import BextMetadata
 from .metadata.guano import GuanoMetadata
 from .metadata.info import InfoMetadata
 from .metadata.recording import dump_metadata
+from .metadata.wamd import SETTABLE_TEXT_IDS, WAMD_IDS, WAMD_NAMES, WamdMetadata
 from .wav import WAVParser
 
 
@@ -346,6 +347,39 @@ def _set_bext_attr(bext: BextMetadata, attr: str, value: str) -> None:
         raise ValueError(f"unknown bext attribute {attr!r}; expected one of: {known}")
 
 
+# Human-facing names of the WAMD text fields a user may set (GPS is handled
+# specially and gets its own alias).
+_WAMD_SETTABLE_NAMES = frozenset(WAMD_IDS[tag] for tag in SETTABLE_TEXT_IDS)
+
+
+def _set_wamd_field(wamd: WamdMetadata, key: str, value: str) -> None:
+    if key.upper() == "GPS":
+        parts = value.split()
+        if len(parts) != 2:
+            raise ValueError(f"wamd GPS expects 'LAT LON', got {value!r}")
+        try:
+            wamd.loc_position = (float(parts[0]), float(parts[1]))
+        except ValueError as e:
+            raise ValueError(f"wamd GPS expects two numbers, got {value!r}") from e
+        return
+    name = key.lower()
+    if name not in _WAMD_SETTABLE_NAMES:
+        known = ", ".join(["GPS", *sorted(_WAMD_SETTABLE_NAMES)])
+        raise ValueError(f"unknown or non-settable wamd field {key!r}; expected one of: {known}")
+    wamd.set_text(WAMD_NAMES[name], value)
+
+
+def _remove_wamd_field(wamd: WamdMetadata, key: str) -> None:
+    if key.upper() == "GPS":
+        wamd.remove(WAMD_NAMES["gpsfirst"])
+        return
+    name = key.lower()
+    if name not in WAMD_NAMES:
+        known = ", ".join(["GPS", *sorted(WAMD_NAMES)])
+        raise ValueError(f"unknown wamd field {key!r}; expected one of: {known}")
+    wamd.remove(WAMD_NAMES[name])
+
+
 def _apply_metadata_changes(wav: WAVParser, args: argparse.Namespace) -> list[str]:
     """Apply the requested field edits to ``wav`` in memory; return a change log."""
     changes: list[str] = []
@@ -381,13 +415,26 @@ def _apply_metadata_changes(wav: WAVParser, args: argparse.Namespace) -> list[st
             changes.append(f"bext {attr} = {value!r}")
         bext.write_to_parser(wav)
 
+    if args.wamd or args.remove_wamd:
+        wamd = WamdMetadata.from_parser(wav) or WamdMetadata()
+        for item in args.wamd:
+            key, value = split_assignment(item)
+            _set_wamd_field(wamd, key, value)
+            changes.append(f"wamd {key} = {value!r}")
+        for key in args.remove_wamd:
+            _remove_wamd_field(wamd, key)
+            changes.append(f"wamd {key} removed")
+        wamd.write_to_parser(wav)
+
     return changes
 
 
 def _cmd_set(argv: Sequence[str] | None) -> int:
     parser = argparse.ArgumentParser(
         prog="riffy set",
-        description="Edit recorder-metadata fields (GUANO / RIFF INFO / bext) in a WAV file.",
+        description=(
+            "Edit recorder-metadata fields (GUANO / RIFF INFO / bext / WAMD) in a WAV file."
+        ),
     )
     parser.add_argument("file", help="Path to a WAV file")
     parser.add_argument(
@@ -412,6 +459,13 @@ def _cmd_set(argv: Sequence[str] | None) -> int:
         help="set a bext attribute, e.g. 'description=Dawn chorus' (repeatable)",
     )
     parser.add_argument(
+        "--wamd",
+        action="append",
+        default=[],
+        metavar="KEY=VAL",
+        help="set a WAMD field, e.g. 'GPS=1.5 -2.5' or 'notes=dawn chorus' (repeatable)",
+    )
+    parser.add_argument(
         "--remove-guano",
         action="append",
         default=[],
@@ -425,11 +479,28 @@ def _cmd_set(argv: Sequence[str] | None) -> int:
         metavar="FOURCC",
         help="remove a RIFF INFO tag (repeatable)",
     )
+    parser.add_argument(
+        "--remove-wamd",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="remove a WAMD field, e.g. 'GPS' or 'notes' (repeatable)",
+    )
     _add_write_flags(parser)
     args = parser.parse_args(argv)
 
-    if not (args.guano or args.info or args.bext or args.remove_guano or args.remove_info):
-        parser.error("nothing to do: pass at least one --guano/--info/--bext/--remove-* option")
+    if not (
+        args.guano
+        or args.info
+        or args.bext
+        or args.wamd
+        or args.remove_guano
+        or args.remove_info
+        or args.remove_wamd
+    ):
+        parser.error(
+            "nothing to do: pass at least one --guano/--info/--bext/--wamd/--remove-* option"
+        )
 
     file_path = Path(args.file)
     try:
@@ -587,7 +658,7 @@ def _print_top_help() -> None:
     print("  info <file>               Show the audio format and file details")
     print("  export <file> ... <out>   Write a chunk (--chunk ID) or audio (--audio) to a file")
     print("\nWrite commands (dry run unless --apply; --backup keeps a .bak):")
-    print("  set <file> --guano/--info/--bext KEY=VAL   Edit recorder-metadata fields")
+    print("  set <file> --guano/--info/--bext/--wamd KEY=VAL   Edit recorder-metadata fields")
     print("  chunk <add|replace|set|copy|remove> ...    Modify chunks")
     print("\nRun 'riffy <command> -h' for command options.")
 
