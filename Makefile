@@ -50,7 +50,7 @@ docs-serve:  ## Serve the docs locally with live reload
 	$(UV) run --extra docs mkdocs serve
 
 examples:  ## Run all example scripts
-	$(UV) run python examples/run_all.py
+	$(UV) run python examples/run_all.py -v
 
 precommit:  ## Run pre-commit on all files
 	$(UV)x pre-commit run --all-files
