@@ -191,6 +191,68 @@ class TestCopyChunkFromParser:
             parser2.copy_chunk_from_parser("INFO", parser1)
 
 
+class TestRemoveChunk:
+    """Tests for remove_chunk method."""
+
+    def test_remove_all_occurrences(self, valid_pcm_wav):
+        """Removing without an index drops every occurrence of the ID."""
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        parser.add_chunk("LIST", b"INFOone")
+        parser.add_chunk("LIST", b"INFOtwo")
+        assert len(parser.get_chunks("LIST")) == 2
+
+        parser.remove_chunk("LIST")
+
+        assert "LIST" not in parser.chunks
+        assert parser.get_chunks("LIST") == []
+
+    def test_remove_single_occurrence_by_index(self, valid_pcm_wav):
+        """An index removes just that occurrence, keeping the rest in order."""
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        parser.add_chunk("LIST", b"INFOone")
+        parser.add_chunk("LIST", b"INFOtwo")
+
+        parser.remove_chunk("LIST", 0)
+
+        remaining = parser.get_chunks("LIST")
+        assert len(remaining) == 1
+        assert remaining[0].data == b"INFOtwo"
+
+    def test_remove_nonexistent_chunk_raises(self, valid_pcm_wav):
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        with pytest.raises(MissingChunkError, match="Chunk 'guan' not found"):
+            parser.remove_chunk("guan")
+
+    def test_remove_out_of_range_index_raises(self, valid_pcm_wav):
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        parser.add_chunk("LIST", b"INFOone")
+        with pytest.raises(MissingChunkError, match="no occurrence at index 5"):
+            parser.remove_chunk("LIST", 5)
+
+    def test_remove_data_chunk_clears_audio(self, valid_pcm_wav):
+        """Removing the data chunk entirely also clears cached audio_data."""
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        assert parser.audio_data is not None
+
+        parser.remove_chunk("data")
+
+        assert "data" not in parser.chunks
+        assert parser.audio_data is None
+
+    def test_removed_chunk_absent_after_write(self, valid_pcm_wav, tmp_path):
+        """A removed chunk does not reappear when the file is written and re-read."""
+        parser = WAVParser(valid_pcm_wav["filepath"])
+        parser.add_chunk("guan", b"GUANO|Version: 1.0 ")
+        out = tmp_path / "with_guan.wav"
+        parser.write_wav(out)
+        assert "guan" in WAVParser(out).chunks
+
+        parser.remove_chunk("guan")
+        out2 = tmp_path / "no_guan.wav"
+        parser.write_wav(out2)
+        assert "guan" not in WAVParser(out2).chunks
+
+
 class TestWriteWav:
     """Tests for write_wav method."""
 

@@ -3,9 +3,12 @@
 import json
 import struct
 
+import pytest
+
 from riffy import dump_metadata
 from riffy.__main__ import main
 from riffy.metadata import BextMetadata, GuanoMetadata, InfoMetadata
+from riffy.wav import WAVParser
 
 
 def _guano() -> bytes:
@@ -104,3 +107,152 @@ class TestCli:
         bad.write_bytes(b"NOTAWAVE" + struct.pack("<I", 0))
         assert main([str(bad)]) == 1
         assert capsys.readouterr().err.startswith("riffy:")
+
+    def test_top_level_help(self, capsys):
+        assert main([]) == 0
+        assert main(["-h"]) == 0
+        assert "Read commands:" in capsys.readouterr().out
+
+
+class TestCliChunks:
+    def test_chunks_table(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([("guan", _guano())])
+        assert main(["chunks", str(path)]) == 0
+        out = capsys.readouterr().out
+        assert "fmt " in out and "data" in out and "guan" in out
+
+    def test_chunks_json(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([("guan", _guano())])
+        assert main(["chunks", str(path), "--json"]) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["riff_form"] == "RIFF"
+        assert "data" in data["chunks"]
+
+
+class TestCliInfo:
+    def test_info_text(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["info", str(path)]) == 0
+        out = capsys.readouterr().out
+        assert "Format:" in out and "Duration:" in out
+
+    def test_info_json(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["info", str(path), "--json"]) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["format"]["is_pcm"] is True
+
+
+class TestCliExport:
+    def test_export_audio(self, make_metadata_wav, tmp_path, capsys):
+        path = make_metadata_wav([])
+        out = tmp_path / "audio.raw"
+        assert main(["export", str(path), "--audio", str(out)]) == 0
+        assert out.exists() and out.stat().st_size > 0
+
+    def test_export_chunk_by_id(self, make_metadata_wav, tmp_path):
+        path = make_metadata_wav([("guan", _guano())])
+        out = tmp_path / "guan.bin"
+        assert main(["export", str(path), "--chunk", "guan", str(out)]) == 0
+        assert out.read_bytes() == _guano()
+
+    def test_export_requires_a_target(self, make_metadata_wav, tmp_path):
+        path = make_metadata_wav([])
+        with pytest.raises(SystemExit):  # mutually-exclusive group is required
+            main(["export", str(path), str(tmp_path / "out.bin")])
+
+
+class TestCliSet:
+    def test_set_dry_run_writes_nothing(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        before = path.read_bytes()
+        assert main(["set", str(path), "--guano", "GUANO|Version=1.0"]) == 0
+        assert path.read_bytes() == before  # untouched without --apply
+        assert "[dry-run]" in capsys.readouterr().out
+
+    def test_set_apply_guano(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        rc = main(
+            ["set", str(path), "--guano", "GUANO|Version=1.0", "--guano", "Make=Riffy", "--apply"]
+        )
+        assert rc == 0
+        g = GuanoMetadata.from_parser(WAVParser(path))
+        assert g is not None and g.make == "Riffy"
+
+    def test_set_apply_info_and_remove(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        main(["set", str(path), "--info", "IART=Field Team", "--apply"])
+        assert InfoMetadata.from_parser(WAVParser(path)).artist == "Field Team"
+        main(["set", str(path), "--remove-info", "IART", "--apply"])
+        assert InfoMetadata.from_parser(WAVParser(path)).artist is None
+
+    def test_set_apply_bext_with_int_coercion(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        main(["set", str(path), "--bext", "originator=riffy", "--bext", "version=2", "--apply"])
+        bext = BextMetadata.from_parser(WAVParser(path))
+        assert bext is not None and bext.originator == "riffy" and bext.version == 2
+
+    def test_set_bext_bad_int_errors(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--bext", "version=notanint", "--apply"]) == 1
+        assert "expects an integer" in capsys.readouterr().err
+
+    def test_set_unknown_bext_attr_errors(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--bext", "nope=1", "--apply"]) == 1
+        assert "unknown bext attribute" in capsys.readouterr().err
+
+    def test_set_with_no_options_errors(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        with pytest.raises(SystemExit):  # parser.error -> nothing to do
+            main(["set", str(path)])
+
+    def test_set_backup_kept(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        main(["set", str(path), "--guano", "GUANO|Version=1.0", "--apply", "--backup"])
+        assert path.with_name(path.name + ".bak").exists()
+
+    def test_set_force_rf64(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        main(["set", str(path), "--guano", "GUANO|Version=1.0", "--apply", "--force-rf64"])
+        assert WAVParser(path).riff_form in ("RF64", "BW64")
+
+
+class TestCliChunk:
+    def test_chunk_add_apply(self, make_metadata_wav, tmp_path):
+        path = make_metadata_wav([])
+        data_file = tmp_path / "note.bin"
+        data_file.write_bytes(b"hello")
+        assert main(["chunk", "add", str(path), "NOTE", str(data_file), "--apply"]) == 0
+        assert WAVParser(path).get_chunk("NOTE").data == b"hello"
+
+    def test_chunk_replace_requires_existing(self, make_metadata_wav, tmp_path, capsys):
+        path = make_metadata_wav([])
+        data_file = tmp_path / "note.bin"
+        data_file.write_bytes(b"x")
+        assert main(["chunk", "replace", str(path), "NOTE", str(data_file), "--apply"]) == 1
+        assert "not found" in capsys.readouterr().err
+
+    def test_chunk_copy(self, make_metadata_wav, tmp_path):
+        src = make_metadata_wav([("guan", _guano())], name="src.wav")
+        dst = make_metadata_wav([], name="dst.wav")
+        assert main(["chunk", "copy", str(dst), "guan", "--from", str(src), "--apply"]) == 0
+        assert WAVParser(dst).get_chunk("guan") is not None
+
+    def test_chunk_remove(self, make_metadata_wav):
+        path = make_metadata_wav([("guan", _guano())])
+        assert main(["chunk", "remove", str(path), "guan", "--apply"]) == 0
+        assert "guan" not in WAVParser(path).chunks
+
+    def test_chunk_remove_dry_run_keeps_chunk(self, make_metadata_wav):
+        path = make_metadata_wav([("guan", _guano())])
+        assert main(["chunk", "remove", str(path), "guan"]) == 0
+        assert "guan" in WAVParser(path).chunks
+
+    def test_chunk_help(self, capsys):
+        assert main(["chunk"]) == 0
+        assert "Operations:" in capsys.readouterr().out
+
+    def test_chunk_unknown_op_errors(self, capsys):
+        assert main(["chunk", "frobnicate"]) == 1
+        assert "unknown chunk operation" in capsys.readouterr().err

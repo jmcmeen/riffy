@@ -73,7 +73,8 @@ if meta.guano is not None:
 ```
 
 See the [Recorder Metadata](metadata.md) guide for GUANO, RIFF INFO, Broadcast
-Wave `bext`, AudioMoth, and iXML, plus the `python -m riffy` inspector.
+Wave `bext`, AudioMoth, and iXML, and the [command-line interface](cli.md) for
+the `riffy` tool that inspects, diffs, and edits files from the shell.
 
 ## Handling errors
 

@@ -182,17 +182,33 @@ if meta.audiomoth is not None:
     print(meta.audiomoth.device_id, meta.audiomoth.gain)
 ```
 
-Or inspect a file from the command line (standard library only):
+Or drive riffy from the command line (standard library only). Installing the
+package puts a `riffy` command on your PATH; `python -m riffy …` is equivalent.
 
 ```bash
-python -m riffy recording.wav          # human-readable
-python -m riffy --json recording.wav   # JSON-serializable dump
-python -m riffy diff a.wav b.wav        # chunk + metadata differences
+# Read commands
+riffy recording.wav                 # inspect metadata (human-readable; the default)
+riffy inspect recording.wav --json  # JSON-serializable dump
+riffy diff a.wav b.wav              # chunk + metadata differences (--json, --all)
+riffy chunks recording.wav          # list every chunk with size and offset
+riffy info recording.wav            # audio format and file details
+riffy export recording.wav --audio out.raw           # export raw audio
+riffy export recording.wav --chunk guan guan.bin     # export a chunk by ID
+
+# Write commands — a DRY RUN by default; add --apply to write.
+# Writes are atomic; --backup keeps a .bak, --force-rf64 emits the large-file form.
+riffy set recording.wav --guano 'Make=Riffy' --guano 'WA|Prefix=SITE7' --apply
+riffy set recording.wav --info 'IART=Field Team' --remove-info ICMT --apply
+riffy set recording.wav --bext 'description=Dawn chorus' --bext 'version=2' --apply
+riffy chunk add recording.wav NOTE note.bin --apply --backup
+riffy chunk copy recording.wav guan --from other.wav --apply
+riffy chunk remove recording.wav guan --apply
 ```
 
 riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and
 iXML. See the [Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/)
-for typed read/write examples and the device-support matrix.
+for typed read/write examples and the device-support matrix, and the
+[CLI reference](https://jmcmeen.github.io/riffy/cli/) for every subcommand.
 
 ### Getting Detailed File Information
 

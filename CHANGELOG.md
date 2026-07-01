@@ -103,6 +103,27 @@ core (the one breaking change — see below).
   reconciliation — it surfaces each standard close to its raw parsed form and
   leaves precedence/merging policy to downstream consumers. All new metadata
   classes are also re-exported from the top-level `riffy` package.
+- **Expanded command-line interface** — the `riffy` CLI grows from the
+  inspect/diff pair into a full surface over the library (still argparse-only,
+  zero dependencies):
+  - Read commands: `chunks` (list every chunk with size/offset), `info` (audio
+    format and file details), and `export` (`--chunk ID` or `--audio` to a
+    file). Both `inspect` and `diff` remain, and a bare `riffy <file>` still
+    defaults to `inspect`.
+  - Write commands, sharing one safety contract — **dry run by default**, atomic
+    writes (temp file + `os.replace`), `--apply` to commit, `--backup` to keep a
+    `.bak`, `--force-rf64` for the large-file form: `set` edits GUANO / RIFF INFO
+    / `bext` fields (`--guano NS|KEY=VAL`, `--info FOURCC=VAL`, `--bext ATTR=VAL`,
+    plus `--remove-guano` / `--remove-info`), and `chunk add|replace|set|copy|remove`
+    modify chunks.
+  - Packaging: a `riffy` console entry point (`[project.scripts]`), so `riffy …`
+    works alongside `python -m riffy …`.
+- **`WAVParser.remove_chunk(id, index=None)`** — remove one occurrence, or every
+  occurrence, of a chunk ID; backs the CLI `chunk remove` command.
+- **Examples split into `examples/python/` and `examples/bash/`.** The Python
+  scripts moved under `python/`; a parallel `bash/` suite drives the `riffy` CLI
+  to demonstrate the same operations from the shell. The Makefile gains
+  `examples-python` and `examples-bash` targets (with `examples` running both).
 
 ## [0.2.1] - 2026-06-06
 

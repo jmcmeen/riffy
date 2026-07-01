@@ -603,6 +603,57 @@ class WAVParser:
 
         self.set_chunk(chunk_id, source_chunk.data)
 
+    def remove_chunk(self, chunk_id: str, index: int | None = None) -> None:
+        """
+        Remove a chunk from the in-memory chunk store.
+
+        When the file carries multiple chunks with the same ID, ``index`` selects
+        which occurrence to remove (in file order); with the default
+        ``index=None`` every occurrence of ``chunk_id`` is removed. Call
+        ``write_wav(...)`` afterwards to persist the change to disk.
+
+        Removing the ``fmt `` or ``data`` chunk is allowed but leaves the file
+        un-writable until it is restored, since ``write_wav`` requires both.
+
+        Args:
+            chunk_id: The ID of the chunk to remove (e.g., 'guan', 'LIST')
+            index: The occurrence to remove, or ``None`` to remove all of them
+
+        Raises:
+            WAVError: If file hasn't been parsed yet
+            MissingChunkError: If the chunk ID (or the given index) is absent
+
+        Example:
+            >>> parser = WAVParser("audio.wav")
+            >>> parser.remove_chunk('guan')
+            >>> parser.write_wav("stripped.wav")
+        """
+        if not self.format_info:
+            raise WAVError("File not parsed yet. Call parse() first.")
+
+        chunk_list = self.chunks.get(chunk_id)
+        if not chunk_list:
+            available_chunks = ", ".join(self.chunks.keys())
+            raise MissingChunkError(
+                f"Chunk '{chunk_id}' not found. Available chunks: {available_chunks}"
+            )
+
+        if index is None:
+            del self.chunks[chunk_id]
+        else:
+            if index < 0 or index >= len(chunk_list):
+                raise MissingChunkError(
+                    f"Chunk '{chunk_id}' has no occurrence at index {index} "
+                    f"(found {len(chunk_list)})"
+                )
+            del chunk_list[index]
+            if not chunk_list:
+                del self.chunks[chunk_id]
+
+        # Keep audio_data consistent if the data chunk is now gone entirely.
+        if chunk_id == "data" and "data" not in self.chunks:
+            self.audio_data = None
+
     def write_wav(
         self,
         output_path: str | Path,

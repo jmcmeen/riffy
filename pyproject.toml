@@ -45,6 +45,9 @@ docs = [
     "mkdocstrings[python]>=0.26",
 ]
 
+[project.scripts]
+riffy = "riffy.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/jmcmeen/riffy"
 Documentation = "https://jmcmeen.github.io/riffy/"

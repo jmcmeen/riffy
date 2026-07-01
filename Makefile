@@ -7,7 +7,8 @@ UV ?= uv
 .DEFAULT_GOAL := help
 
 .PHONY: help install install-docs test coverage lint format format-check \
-        typecheck check build docs docs-serve examples precommit clean
+        typecheck check build docs docs-serve examples examples-python \
+        examples-bash precommit clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -49,8 +50,13 @@ docs:  ## Build the documentation site (strict)
 docs-serve:  ## Serve the docs locally with live reload
 	$(UV) run --extra docs mkdocs serve
 
-examples:  ## Run all example scripts
-	$(UV) run python examples/run_all.py -v
+examples-python:  ## Run the Python example scripts
+	$(UV) run python examples/python/run_all.py -v
+
+examples-bash:  ## Run the bash CLI examples
+	$(UV) run bash examples/bash/run_all.sh -v
+
+examples: examples-python examples-bash  ## Run all examples (python + bash)
 
 precommit:  ## Run pre-commit on all files
 	$(UV)x pre-commit run --all-files
