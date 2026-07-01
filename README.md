@@ -14,7 +14,7 @@ Riffy provides a pure Python implementation for working with RIFF format files, 
 - **WAV File Support**: Complete WAV file parsing with format validation
 - **RIFF Chunk Management**: Access, add, replace, copy, and remove RIFF chunks
 - **Chunk Modification & Writing**: Modify chunks in memory and write valid WAV files back to disk
-- **Recorder Metadata**: Decode GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and iXML — with a unified `read_metadata()` view and a `python -m riffy` inspector
+- **Recorder Metadata**: Decode GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, Wildlife Acoustics WAMD, and iXML — with a unified `read_metadata()` view and a `python -m riffy` inspector
 - **RF64 / BW64**: Read and write 64-bit large files above the 4 GB classic-WAV limit
 - **Audio Metadata Extraction**: Extract sample rate, channels, bit depth, and duration
 - **Format Validation**: Automatic validation of file format and integrity
@@ -200,13 +200,15 @@ riffy export recording.wav --chunk guan guan.bin     # export a chunk by ID
 riffy set recording.wav --guano 'Make=Riffy' --guano 'WA|Prefix=SITE7' --apply
 riffy set recording.wav --info 'IART=Field Team' --remove-info ICMT --apply
 riffy set recording.wav --bext 'description=Dawn chorus' --bext 'version=2' --apply
+riffy set recording.wav --wamd 'GPS=10.318 -84.074' --apply   # Wildlife Acoustics WAMD
 riffy chunk add recording.wav NOTE note.bin --apply --backup
 riffy chunk copy recording.wav guan --from other.wav --apply
 riffy chunk remove recording.wav guan --apply
 ```
 
-riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments, and
-iXML. See the [Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/)
+riffy decodes GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments,
+Wildlife Acoustics WAMD, and iXML. See the
+[Recorder Metadata guide](https://jmcmeen.github.io/riffy/metadata/)
 for typed read/write examples and the device-support matrix, and the
 [CLI reference](https://jmcmeen.github.io/riffy/cli/) for every subcommand.
 
@@ -256,7 +258,7 @@ Currently, Riffy supports:
 - **WAV Files**: PCM (uncompressed) audio only
 - **RF64 / BW64**: 64-bit large files (above 4 GB) via the `ds64` chunk, read and write
 - **RIFF Chunks**: Standard chunk parsing, modification, and writing for WAV files
-- **Recorder Metadata**: GUANO, RIFF INFO, Broadcast Wave `bext`, AudioMoth comments (read-only), and iXML (read-only)
+- **Recorder Metadata**: GUANO, RIFF INFO, Broadcast Wave `bext`, Wildlife Acoustics WAMD (read/write), AudioMoth comments (read-only), and iXML (read-only)
 
 ### Planned Support
 

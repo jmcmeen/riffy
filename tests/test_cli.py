@@ -7,7 +7,7 @@ import pytest
 
 from riffy import dump_metadata
 from riffy.__main__ import main
-from riffy.metadata import BextMetadata, GuanoMetadata, InfoMetadata
+from riffy.metadata import BextMetadata, GuanoMetadata, InfoMetadata, read_metadata
 from riffy.wav import WAVParser
 
 
@@ -201,6 +201,68 @@ class TestCliSet:
         path = make_metadata_wav([])
         assert main(["set", str(path), "--bext", "nope=1", "--apply"]) == 1
         assert "unknown bext attribute" in capsys.readouterr().err
+
+    def test_set_apply_wamd_gps(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--wamd", "GPS=1.5 -2.5", "--apply"]) == 0
+        assert read_metadata(path).wamd.loc_position == (1.5, -2.5)
+
+    def test_set_wamd_gps_updates_existing_only(self, make_metadata_wav):
+        stream = (
+            struct.pack("<HI", 0x00, 2)
+            + struct.pack("<H", 1)
+            + struct.pack("<HI", 0x01, 8)
+            + b"SM Micro"
+            + struct.pack("<HI", 0x06, 27)
+            + b"WGS84,10.31796,N,84.07411,W"
+        )
+        path = make_metadata_wav([("wamd", stream)])
+        assert main(["set", str(path), "--wamd", "GPS=1.5 -2.5", "--apply"]) == 0
+        wamd = read_metadata(path).wamd
+        assert wamd.loc_position == (1.5, -2.5)
+        assert wamd.model == "SM Micro"  # untouched field survives
+
+    def test_set_wamd_gps_leaves_other_chunks_byte_stable(self, make_metadata_wav):
+        info = InfoMetadata()
+        info.artist = "Field Team"
+        wamd_stream = (
+            struct.pack("<HI", 0x00, 2)
+            + struct.pack("<H", 1)
+            + struct.pack("<HI", 0x06, 15)
+            + b"WGS84,10.0,20.0"
+        )
+        path = make_metadata_wav([("wamd", wamd_stream), ("LIST", info.to_chunk_bytes())])
+        before = WAVParser(path)
+        info_before = before.get_chunk_bytes("LIST")
+        data_before = before.get_chunk_bytes("data")
+
+        assert main(["set", str(path), "--wamd", "GPS=1.5 -2.5", "--apply"]) == 0
+
+        after = WAVParser(path)
+        assert after.get_chunk_bytes("LIST") == info_before  # INFO byte-identical
+        assert after.get_chunk_bytes("data") == data_before  # audio byte-identical
+        assert read_metadata(path).wamd.loc_position == (1.5, -2.5)
+
+    def test_set_wamd_text_field(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--wamd", "notes=dawn chorus", "--apply"]) == 0
+        assert read_metadata(path).wamd.notes == "dawn chorus"
+
+    def test_set_wamd_remove(self, make_metadata_wav):
+        path = make_metadata_wav([])
+        main(["set", str(path), "--wamd", "GPS=1.0 2.0", "--apply"])
+        main(["set", str(path), "--remove-wamd", "GPS", "--apply"])
+        assert read_metadata(path).wamd.loc_position is None
+
+    def test_set_wamd_bad_gps_errors(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--wamd", "GPS=1.5", "--apply"]) == 1
+        assert "GPS expects" in capsys.readouterr().err
+
+    def test_set_unknown_wamd_field_errors(self, make_metadata_wav, capsys):
+        path = make_metadata_wav([])
+        assert main(["set", str(path), "--wamd", "nope=1", "--apply"]) == 1
+        assert "unknown or non-settable wamd field" in capsys.readouterr().err
 
     def test_set_with_no_options_errors(self, make_metadata_wav):
         path = make_metadata_wav([])

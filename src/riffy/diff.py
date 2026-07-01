@@ -18,6 +18,7 @@ from pathlib import Path
 from .metadata.bext import BextMetadata
 from .metadata.guano import GuanoMetadata
 from .metadata.info import InfoMetadata
+from .metadata.wamd import WamdMetadata
 from .wav import WAVParser
 
 #: Difference statuses. ``unchanged`` is only emitted for chunks (and only when
@@ -43,7 +44,7 @@ class ChunkDelta:
 class FieldDelta:
     """One decoded metadata field's difference between file A and file B."""
 
-    standard: str  # "guano" | "info" | "bext"
+    standard: str  # "guano" | "info" | "bext" | "wamd"
     key: str
     status: str  # added | removed | changed
     old: str | None  # value in A (None when absent)
@@ -137,6 +138,9 @@ def _diff_metadata(a: WAVParser, b: WAVParser) -> list[FieldDelta]:
     deltas += _field_deltas(
         "bext", _bext_map(BextMetadata.from_parser(a)), _bext_map(BextMetadata.from_parser(b))
     )
+    deltas += _field_deltas(
+        "wamd", _wamd_map(WamdMetadata.from_parser(a)), _wamd_map(WamdMetadata.from_parser(b))
+    )
     return deltas
 
 
@@ -192,3 +196,9 @@ def _bext_map(bext: BextMetadata | None) -> dict[str, str]:
     if bext.umid is not None:
         result["umid"] = bext.umid.hex()
     return result
+
+
+def _wamd_map(wamd: WamdMetadata | None) -> dict[str, str]:
+    if wamd is None:
+        return {}
+    return {key: str(value) for key, value in wamd.to_dict().items()}

@@ -101,6 +101,17 @@ class TestMetadataDiff:
         assert fields == fields  # sanity
         assert any(f.key == "ICMT" and f.old == "old" and f.new == "new" for f in fields)
 
+    def test_wamd_gps_change(self, make_metadata_wav):
+        def wamd(waypoint):
+            value = waypoint.encode("utf-8")
+            return struct.pack("<HI", 0x06, len(value)) + value
+
+        a = _build(make_metadata_wav, [("wamd", wamd("WGS84,10.0,20.0"))], "a.wav")
+        b = _build(make_metadata_wav, [("wamd", wamd("WGS84,11.0,21.0"))], "b.wav")
+        fields = [f for f in diff(a, b).fields if f.standard == "wamd"]
+        assert any(f.key == "loc_position" and f.status == "changed" for f in fields)
+        assert any(f.key == "gpsfirst" for f in fields)
+
     def test_bext_field_change(self, make_metadata_wav):
         def bext(**kw):
             return BextMetadata(**kw).to_chunk_bytes()
