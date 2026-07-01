@@ -211,3 +211,5 @@ deploy.sh
 *.wav
 .claude/settings.local.json
 /.plans
+/.dev-data
+
