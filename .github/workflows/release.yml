@@ -1,7 +1,9 @@
 name: Release
 
-# Cuts a release for every merge to main, once CI has passed on it: the latest
-# vX.Y.Z tag gets its patch number bumped (v0.1.0 if there are no tags yet).
+# Cuts a release when a merge to main passes CI: the latest vX.Y.Z tag gets its
+# patch number bumped (v0.1.0 if there are no tags yet). Merges that land while
+# a release is running can share the next release (see below), so a release is
+# per merge in the usual case, not guaranteed for each one.
 # Python packages take their version from that tag via hatch-vcs; a repo whose
 # version lives in files (e.g. Cargo.toml) provides .github/scripts/
 # set_version.sh, which is run with the new version (X.Y.Z). CHANGELOG.md's
@@ -61,7 +63,6 @@ jobs:
     env:
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       BUMP: ${{ inputs.bump || 'patch' }}
-      ATTEMPT: ${{ github.run_attempt }}
       GH_TOKEN: ${{ github.token }}
       BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
     steps:
@@ -92,42 +93,51 @@ jobs:
         id: version
         run: |
           semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
-          existing=$(git tag --points-at HEAD | grep -E "$semver" | sort -V | tail -1 || true)
-          if [ -z "$existing" ]; then
-            # The release may be on this commit's changelog commit instead.
-            for t in $(git tag --contains HEAD | grep -E "$semver" || true); do
-              if [ "$(git rev-parse "$t^{commit}^")" = "$(git rev-parse HEAD)" ] &&
-                git log -1 --format=%s "$t" | grep -q '^Update changelog for '; then
-                existing=$t
-              fi
-            done
+          bump() {
+            IFS=. read -r major minor patch <<< "${1#v}"
+            case "$BUMP" in
+              major) echo "v$((major + 1)).0.0" ;;
+              minor) echo "v$major.$((minor + 1)).0" ;;
+              *) echo "v$major.$minor.$((patch + 1))" ;;
+            esac
+          }
+          # This commit's releases: tags on it, or on a changelog commit made
+          # on top of it. `mine` is the newest.
+          mine=$(git tag --points-at HEAD | grep -E "$semver" || true)
+          for t in $(git tag --contains HEAD | grep -E "$semver" || true); do
+            if [ "$(git rev-parse "$t^{commit}^")" = "$(git rev-parse HEAD)" ] &&
+              git log -1 --format=%s "$t" | grep -q '^Update changelog for '; then
+              mine="$mine $t"
+            fi
+          done
+          mine=$(printf '%s\n' $mine | sort -V | tail -1)
+          # A patch run on a released commit retries that release. A minor or
+          # major run retries only its own bump: `mine` must be the bump of the
+          # release before it, not the earlier release it bumps from.
+          if [ -n "$mine" ] && [ "$BUMP" != patch ]; then
+            base=$(git tag --merged HEAD | grep -E "$semver" | grep -vxF "$mine" | sort -V | tail -1 || true)
+            [ -n "$base" ] && [ "$(bump "$base")" = "$mine" ] || retry=no
           fi
-          # A patch run or any re-run on a released commit retries that release.
-          if [ -n "$existing" ] && { [ "$BUMP" = patch ] || [ "$ATTEMPT" -gt 1 ]; }; then
-            echo "$SHA is already $existing; retrying its release and publish."
-            echo "tag=$existing" >> "$GITHUB_OUTPUT"
+          if [ -n "$mine" ] && [ "${retry:-}" != no ]; then
+            echo "$SHA is already $mine; retrying its release and publish."
+            echo "tag=$mine" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           latest=$(git tag --list 'v*' | grep -E "$semver" | sort -V | tail -1 || true)
           if [ -z "$latest" ]; then
             if [ "$BUMP" = major ]; then next=v1.0.0; else next=v0.1.0; fi
-          elif [ -z "$existing" ] && git merge-base --is-ancestor HEAD "$latest"; then
+          elif [ -z "$mine" ] && git merge-base --is-ancestor HEAD "$latest"; then
             echo "$SHA is already included in $latest; nothing to do."
             exit 0
           else
-            IFS=. read -r major minor patch <<< "${latest#v}"
-            case "$BUMP" in
-              major) next="v$((major + 1)).0.0" ;;
-              minor) next="v$major.$((minor + 1)).0" ;;
-              *) next="v$major.$minor.$((patch + 1))" ;;
-            esac
+            next=$(bump "$latest")
           fi
           echo "Releasing $next ($BUMP bump; previous: ${latest:-none})"
           {
             echo "tag=$next"
             echo "new=true"
             echo "previous=$latest"
-            echo "at_head=$existing"
+            echo "at_head=$mine"
           } >> "$GITHUB_OUTPUT"
 
       - name: Roll changelog and set version

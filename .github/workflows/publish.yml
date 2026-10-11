@@ -1,6 +1,7 @@
 name: Publish
 
-# Publishes to PyPI when a GitHub Release is published.
+# Publishes to PyPI when a GitHub Release is published, or when release.yml
+# starts it on a new tag. It only runs on a vX.Y.Z tag.
 #
 # Uses PyPI Trusted Publishing (OIDC) — no API token/secret required. Before the
 # first release, configure a Trusted Publisher on PyPI for this project:
@@ -30,13 +31,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Require a release tag
+        run: |
+          # Run by hand on a branch, this would build and upload a dev version.
+          if [ "$GITHUB_REF_TYPE" != tag ] || ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Publish only runs on a vX.Y.Z tag, not $GITHUB_REF_TYPE '$GITHUB_REF_NAME'."
+            exit 1
+          fi
+
       - name: Build sdist + wheel
         run: |
           # Version from the tag this run is on, not `git describe`: when two
           # tags share a commit, describe can pick the older one.
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            export SETUPTOOLS_SCM_PRETEND_VERSION="${GITHUB_REF_NAME#v}"
-          fi
+          export SETUPTOOLS_SCM_PRETEND_VERSION="${GITHUB_REF_NAME#v}"
           uv build
 
       - name: Upload artifacts
