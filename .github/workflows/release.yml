@@ -162,5 +162,8 @@ jobs:
             gh release create "$TAG" --target "$TARGET" --title "$TAG" "${notes[@]}"
           fi
           # A release made with GITHUB_TOKEN doesn't fire publish.yml's release
-          # trigger, so start it directly on the new tag.
-          gh workflow run publish.yml --ref "$TAG"
+          # trigger, so start it directly on the new tag. Repos with nothing to
+          # publish have no publish.yml.
+          if [ -f .github/workflows/publish.yml ]; then
+            gh workflow run publish.yml --ref "$TAG"
+          fi
