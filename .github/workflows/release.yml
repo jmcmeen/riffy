@@ -9,8 +9,9 @@ name: Release
 # commit on main, along with any set_version.sh edits; that commit is what gets
 # tagged, and the entries become the release notes. If main has moved on by
 # then, nothing is pushed: the entries stay put and roll into the next release
-# (GitHub's generated notes are used for this one), and the tag goes on the
-# merge itself, so set_version.sh's edits are missing from it.
+# (GitHub's generated notes are used for this one). A repo with set_version.sh
+# isn't released then (its merge still has the old version); the release for
+# the newer merge includes it.
 #
 # For a minor or major release, run this workflow by hand on main ("Run
 # workflow", or `gh workflow run release.yml -f bump=minor`). It releases the
@@ -158,8 +159,10 @@ jobs:
             python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
               "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
           fi
+          versioned=
           if [ -f .github/scripts/set_version.sh ]; then
             bash .github/scripts/set_version.sh "${TAG#v}"
+            git diff --quiet -- . ':!CHANGELOG.md' || versioned=1
           fi
           if git diff --quiet; then
             echo "Nothing under [Unreleased] and no version files; using generated notes."
@@ -176,8 +179,13 @@ jobs:
             else
               echo "Nothing under [Unreleased]; using generated notes."
             fi
+          elif [ -n "$versioned" ]; then
+            # Tagging $SHA would ship the old version from the version files.
+            # The release run for the newer merge on main covers this one.
+            echo "::error::main moved past $SHA; not releasing $TAG without its version bump (the newer merge's release includes this one)."
+            exit 1
           else
-            echo "::warning::main moved past $SHA; the changelog and version changes for $TAG weren't pushed."
+            echo "::warning::main moved past $SHA; changelog entries stay under [Unreleased]."
           fi
 
       - name: Create release
