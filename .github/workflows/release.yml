@@ -1,0 +1,234 @@
+name: Release
+
+# Cuts a release when a merge to main passes CI: the latest vX.Y.Z tag gets its
+# patch number bumped (v0.1.0 if there are no tags yet). Merges that land while
+# a release is running can share the next release (see below), so a release is
+# per merge in the usual case, not guaranteed for each one.
+# Python packages take their version from that tag via hatch-vcs; a repo whose
+# version lives in files (e.g. Cargo.toml) provides .github/scripts/
+# set_version.sh, which is run with the new version (X.Y.Z). CHANGELOG.md's
+# [Unreleased] entries move under the new version in a github-actions[bot]
+# commit on main, along with any set_version.sh edits; that commit is what gets
+# tagged, and the entries become the release notes. If main has moved on by
+# then, nothing is pushed and this merge isn't released on its own: the release
+# for the newer merge includes it (a manual minor/major run says to run again).
+#
+# For a minor or major release, run this workflow by hand on main ("Run
+# workflow", or `gh workflow run release.yml -f bump=minor`). It releases the
+# head of main with that part bumped; the next merge continues from it. If the
+# merge was already released as a patch, the commit carries both tags. It
+# refuses to run until CI has passed on that commit. If a release is already
+# running and a merge's release queues behind your run, GitHub cancels your
+# pending run in its favour -- Actions shows it as cancelled; run it again.
+#
+# Releasing runs are serialized, and GitHub keeps only the newest pending one,
+# so merges that land close together can share a release. The lock is on the
+# job, so skipped runs (failed CI, dispatch off main) never take that slot.
+# A commit that is already inside the latest release is skipped, so an old run
+# finishing late never gets a newer version than the code after it. Re-running
+# a run whose release exists only re-dispatches publish.yml (which skips files
+# already on PyPI).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to bump
+        type: choice
+        options: [minor, major, patch]
+        default: minor
+
+permissions:
+  contents: write # changelog commit, tag + release
+  actions: write # dispatch publish.yml
+
+jobs:
+  release:
+    name: Tag and release
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      BUMP: ${{ inputs.bump || 'patch' }}
+      GH_TOKEN: ${{ github.token }}
+      BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0 # all tags
+
+      - name: Require passing CI
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # A release commit never runs CI (bot pushes don't trigger it), so
+          # check the commit it was made on.
+          tested=$SHA
+          if git rev-parse -q --verify HEAD^ > /dev/null &&
+            [ "$(git log -1 --format=%ae HEAD)" = "$BOT_EMAIL" ] &&
+            git log -1 --format=%s HEAD | grep -q '^Update changelog for '; then
+            tested=$(git rev-parse HEAD^)
+          fi
+          passed=$(gh run list --workflow ci.yml --commit "$tested" --event push \
+            --status success --json databaseId --jq length)
+          if [ "$passed" -eq 0 ]; then
+            echo "::error::CI hasn't passed on $tested yet; wait for it, then run this again."
+            exit 1
+          fi
+
+      - name: Compute version
+        id: version
+        run: |
+          semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          bump() {
+            IFS=. read -r major minor patch <<< "${1#v}"
+            case "$BUMP" in
+              major) echo "v$((major + 1)).0.0" ;;
+              minor) echo "v$major.$((minor + 1)).0" ;;
+              *) echo "v$major.$minor.$((patch + 1))" ;;
+            esac
+          }
+          first() { if [ "$BUMP" = major ]; then echo v1.0.0; else echo v0.1.0; fi; }
+          # This commit's releases, oldest first: tags on it, or on a release
+          # commit the bot made on top of it.
+          ours=$(git tag --points-at HEAD | grep -E "$semver" || true)
+          for t in $(git tag --contains HEAD | grep -E "$semver" || true); do
+            if [ "$(git rev-parse "$t^{commit}^")" = "$(git rev-parse HEAD)" ] &&
+              [ "$(git log -1 --format=%ae "$t")" = "$BOT_EMAIL" ] &&
+              git log -1 --format=%s "$t" | grep -q '^Update changelog for '; then
+              ours="$ours $t"
+            fi
+          done
+          ours=$(printf '%s\n' $ours | grep . | sort -uV || true)
+          newest=$(printf '%s\n' $ours | tail -1)
+          if [ "$BUMP" = patch ]; then
+            # A patch run on a released commit retries its newest release.
+            retry=$newest
+          else
+            # A minor or major run retries only its own bump: a tag of this
+            # commit that is exactly that bump of the release before it, or the
+            # first release when there is none before it. (Asking for the same
+            # bump again on the same commit counts as a retry: releasing
+            # identical code under two new minor versions is never wanted.)
+            retry=
+            merged=$(git tag --merged HEAD | grep -E "$semver" || true)
+            for t in $ours; do
+              base=$(printf '%s\n' $merged "$t" | sort -uV | grep -B1 -xF "$t" | grep -vxF "$t" || true)
+              if { [ -n "$base" ] && [ "$(bump "$base")" = "$t" ]; } ||
+                { [ -z "$base" ] && [ "$t" = "$(first)" ]; }; then
+                retry=$t
+              fi
+            done
+          fi
+          if [ -n "$retry" ]; then
+            echo "$SHA is already $retry; retrying its release and publish."
+            echo "tag=$retry" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(git tag --list 'v*' | grep -E "$semver" | sort -V | tail -1 || true)
+          if [ -z "$latest" ]; then
+            next=$(first)
+          elif git merge-base --is-ancestor HEAD "$latest" &&
+            ! printf '%s\n' $ours | grep -qxF "$latest"; then
+            echo "$SHA is already included in $latest; nothing to do."
+            exit 0
+          else
+            next=$(bump "$latest")
+          fi
+          echo "Releasing $next ($BUMP bump; previous: ${latest:-none})"
+          {
+            echo "tag=$next"
+            echo "new=true"
+            echo "previous=$latest"
+            echo "at_head=$newest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Roll changelog and set version
+        id: changelog
+        if: steps.version.outputs.new == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          PREVIOUS: ${{ steps.version.outputs.previous }}
+          AT_HEAD: ${{ steps.version.outputs.at_head }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          # A re-run after this changelog commit reached main but the release
+          # wasn't created: release that commit, with the notes it rolled,
+          # rather than rolling $SHA again (that push would be rejected).
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          rolled=$(git log --format='%H%x09%P%x09%ae%x09%s' "$SHA..origin/main" |
+            awk -F '\t' -v sha="$SHA" -v bot="$BOT_EMAIL" -v subject="Update changelog for $TAG" \
+              '$2 == sha && $3 == bot && $4 == subject { print $1 }')
+          if [ -n "$rolled" ]; then
+            echo "Release commit for $TAG is already on main ($rolled); releasing that."
+            echo "sha=$rolled" >> "$GITHUB_OUTPUT"
+            if git show "$rolled:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md" 2> /dev/null &&
+              python3 .github/scripts/roll_changelog.py --notes "$RUNNER_TEMP/CHANGELOG.md" "$TAG" "$notes"; then
+              echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          if [ -f CHANGELOG.md ]; then
+            python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
+              "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
+          fi
+          if [ -f .github/scripts/set_version.sh ]; then
+            bash .github/scripts/set_version.sh "${TAG#v}"
+          fi
+          # Stage everything, so files the hook creates or stages are included.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing under [Unreleased] and no version files; using generated notes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "$BOT_EMAIL"
+          git commit -qm "Update changelog for $TAG"
+          # Fast-forward only: if main moved past $SHA, leave it alone.
+          if git push origin HEAD:refs/heads/main; then
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            if [ -s "$notes" ]; then
+              echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            else
+              echo "Nothing under [Unreleased]; using generated notes."
+            fi
+            exit 0
+          fi
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+            echo "::error::Pushing the release commit for $TAG failed, and main hasn't moved."
+            exit 1
+          fi
+          # Releasing $SHA as is would leave its entries under [Unreleased]
+          # (they'd appear in the next release too) and miss the version files.
+          echo "::notice::main moved past $SHA; not releasing $TAG here. The release for the newer merge includes this one (for a manual minor/major run, run it again)."
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        if: steps.version.outputs.tag != '' && steps.changelog.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          TARGET: ${{ steps.changelog.outputs.sha || env.SHA }}
+          NOTES: ${{ steps.changelog.outputs.notes }}
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            if [ -n "$NOTES" ]; then notes=(--notes-file "$NOTES"); else notes=(--generate-notes); fi
+            gh release create "$TAG" --target "$TARGET" --title "$TAG" "${notes[@]}"
+          fi
+          # A release made with GITHUB_TOKEN doesn't fire publish.yml's release
+          # trigger, so start it directly on the new tag. Repos with nothing to
+          # publish have no publish.yml.
+          if [ -f .github/workflows/publish.yml ]; then
+            gh workflow run publish.yml --ref "$TAG"
+          fi

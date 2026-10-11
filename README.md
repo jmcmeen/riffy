@@ -85,7 +85,7 @@ for chunk_id, chunk_list in parser.chunks.items():
         print(f"Chunk: {chunk_id}, Size: {chunk.size} bytes, Offset: {chunk.offset}")
 
 # Access a specific chunk (first occurrence) via the convenience accessor
-fmt_chunk = parser.get_chunk('fmt ')
+fmt_chunk = parser.get_chunk("fmt ")
 if fmt_chunk is not None:
     print(f"Format chunk size: {fmt_chunk.size}")
 ```
@@ -120,8 +120,8 @@ bytes_written = parser.export_audio_data("raw_audio.bin")
 print(f"Exported {bytes_written} bytes of audio data")
 
 # Export specific chunks
-parser.export_chunk('fmt ', "format_chunk.bin")
-parser.export_chunk('data', "data_chunk.bin")
+parser.export_chunk("fmt ", "format_chunk.bin")
+parser.export_chunk("data", "data_chunk.bin")
 
 # List all available chunks before exporting. Each ID maps to a list of
 # occurrences, so iterate the inner list.
@@ -141,17 +141,17 @@ from riffy import WAVParser
 parser = WAVParser("audio.wav")
 
 # Replace the audio data with new bytes
-parser.replace_chunk('data', new_audio_bytes)
+parser.replace_chunk("data", new_audio_bytes)
 
 # Add a custom metadata chunk (IDs must be exactly 4 ASCII characters)
-parser.add_chunk('INFO', b'Artist: Example\x00')
+parser.add_chunk("INFO", b"Artist: Example\x00")
 
 # set_chunk adds the chunk if missing, or replaces it if present
-parser.set_chunk('NOTE', b'recorded 2026\x00')
+parser.set_chunk("NOTE", b"recorded 2026\x00")
 
 # Copy a chunk from another file
 other = WAVParser("other.wav")
-parser.copy_chunk_from_parser('data', other)
+parser.copy_chunk_from_parser("data", other)
 
 # Write the modified file (overwrite=False refuses to clobber the source)
 bytes_written = parser.write_wav("modified.wav")
@@ -171,11 +171,11 @@ whichever standards a file contains:
 from riffy import read_metadata
 
 meta = read_metadata("recording.wav")
-print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+print(meta.sources)  # e.g. ('guano',) or ('info', 'audiomoth')
 
 if meta.guano is not None:
-    print(meta.guano.timestamp)       # timezone-aware datetime
-    print(meta.guano.loc_position)    # (lat, lon)
+    print(meta.guano.timestamp)  # timezone-aware datetime
+    print(meta.guano.loc_position)  # (lat, lon)
     print(meta.guano.make, meta.guano.model)
 
 if meta.audiomoth is not None:

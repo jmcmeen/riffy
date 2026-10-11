@@ -64,4 +64,4 @@ precommit:  ## Run pre-commit on all files
 clean:  ## Remove build, test, and cache artifacts
 	rm -rf build/ dist/ *.egg-info src/*.egg-info src/riffy.egg-info site/ \
 		htmlcov/ .coverage coverage.xml .pytest_cache/ .ruff_cache/ .mypy_cache/
-	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -name .venv -prune -o -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -18,12 +18,12 @@ from riffy import read_metadata
 
 meta = read_metadata("recording.wav")
 
-meta.sources        # e.g. ('guano',) or ('info', 'audiomoth')
-meta.guano          # GuanoMetadata | None
-meta.info           # InfoMetadata  | None
-meta.bext           # BextMetadata  | None
-meta.audiomoth      # AudioMothMetadata | None
-meta.wamd           # WamdMetadata  | None
+meta.sources  # e.g. ('guano',) or ('info', 'audiomoth')
+meta.guano  # GuanoMetadata | None
+meta.info  # InfoMetadata  | None
+meta.bext  # BextMetadata  | None
+meta.audiomoth  # AudioMothMetadata | None
+meta.wamd  # WamdMetadata  | None
 ```
 
 `read_metadata` deliberately does **no** cross-standard reconciliation: it
@@ -53,14 +53,14 @@ typed attributes; vendor and arbitrary fields round-trip verbatim.
 from riffy import WAVParser, GuanoMetadata
 
 g = GuanoMetadata.from_parser(WAVParser("bat.wav"))
-g.version               # "1.0"
-g.timestamp             # datetime, UTC offset preserved
-g.loc_position          # (37.1878, -86.1057)
+g.version  # "1.0"
+g.timestamp  # datetime, UTC offset preserved
+g.loc_position  # (37.1878, -86.1057)
 g.make, g.model, g.serial
-g.species_manual_id     # ["Myotis lucifugus"]
+g.species_manual_id  # ["Myotis lucifugus"]
 
-g.get("WA", "Song Meter|Prefix")   # vendor-namespaced access
-g.fields                           # full (namespace, key) -> raw value
+g.get("WA", "Song Meter|Prefix")  # vendor-namespaced access
+g.fields  # full (namespace, key) -> raw value
 
 # Edit and write back
 g.species_manual_id = ["MYLU"]
@@ -84,11 +84,11 @@ from riffy import WAVParser, InfoMetadata
 
 info = InfoMetadata.from_parser(WAVParser("clip.wav"))
 info.title, info.artist, info.comment, info.software
-info.get("ICMT")                 # raw FOURCC access
-info.tags                        # full FOURCC -> value mapping
+info.get("ICMT")  # raw FOURCC access
+info.tags  # full FOURCC -> value mapping
 
 info.artist = "Field Team"
-info.write_to_parser(parser)     # updates only the INFO list, leaves others alone
+info.write_to_parser(parser)  # updates only the INFO list, leaves others alone
 ```
 
 ### Broadcast Wave (`bext`)
@@ -131,7 +131,7 @@ from riffy import WAVParser, WamdMetadata
 
 parser = WAVParser("songmeter.wav")
 w = WamdMetadata.from_parser(parser)
-w.loc_position          # (10.31796, -84.07411)
+w.loc_position  # (10.31796, -84.07411)
 w.model, w.firmware
 
 # Correct the coordinates in place (only the GPS field changes)
@@ -156,13 +156,13 @@ discards the others.
 from riffy import WAVParser, AudioMothMetadata
 
 am = AudioMothMetadata.from_parser(WAVParser("audiomoth.wav"))
-am.timestamp            # timezone-aware datetime
-am.device_id            # "0FE081F80FE081F0"
-am.gain                 # "medium" (numeric firmware gains are normalized)
+am.timestamp  # timezone-aware datetime
+am.device_id  # "0FE081F80FE081F0"
+am.gain  # "medium" (numeric firmware gains are normalized)
 am.battery_voltage, am.temperature_c
 
 # Normalize into GUANO shape (within-standard convenience)
-g = am.to_guano()       # GuanoMetadata with Make/Model/Serial/Timestamp/...
+g = am.to_guano()  # GuanoMetadata with Make/Model/Serial/Timestamp/...
 ```
 
 !!! warning "AudioMoth parsing is best-effort"
@@ -227,7 +227,7 @@ The same structured dump is available programmatically:
 from riffy import dump_metadata
 import json
 
-data = dump_metadata("recording.wav")   # plain, JSON-serializable dict
+data = dump_metadata("recording.wav")  # plain, JSON-serializable dict
 print(json.dumps(data, indent=2))
 ```
 
@@ -241,8 +241,8 @@ exactly (and only) what you intended.
 from riffy import diff
 
 d = diff("original.wav", "corrected.wav")
-d.identical            # False
-d.changed_chunks       # [ChunkDelta(chunk_id='guan', status='changed', ...)]
+d.identical  # False
+d.changed_chunks  # [ChunkDelta(chunk_id='guan', status='changed', ...)]
 for f in d.fields:
     print(f.standard, f.key, f.old, "->", f.new)
     # guano Loc Position 35.9 -83.9 -> 36.31 -82.34
