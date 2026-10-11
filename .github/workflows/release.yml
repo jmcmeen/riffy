@@ -2,11 +2,15 @@ name: Release
 
 # Cuts a release for every merge to main, once CI has passed on it: the latest
 # vX.Y.Z tag gets its patch number bumped (v0.1.0 if there are no tags yet).
-# The version itself comes from that tag via hatch-vcs. CHANGELOG.md's
+# Python packages take their version from that tag via hatch-vcs; a repo whose
+# version lives in files (e.g. Cargo.toml) provides .github/scripts/
+# set_version.sh, which is run with the new version (X.Y.Z). CHANGELOG.md's
 # [Unreleased] entries move under the new version in a github-actions[bot]
-# commit on main, which is what gets tagged; they become the release notes.
-# If main has moved on by then, the entries stay put and roll into the next
-# release (GitHub's generated notes are used for this one).
+# commit on main, along with any set_version.sh edits; that commit is what gets
+# tagged, and the entries become the release notes. If main has moved on by
+# then, nothing is pushed: the entries stay put and roll into the next release
+# (GitHub's generated notes are used for this one), and the tag goes on the
+# merge itself, so set_version.sh's edits are missing from it.
 #
 # For a minor or major release, run this workflow by hand on main ("Run
 # workflow", or `gh workflow run release.yml -f bump=minor`). It releases the
@@ -58,6 +62,7 @@ jobs:
       BUMP: ${{ inputs.bump || 'patch' }}
       ATTEMPT: ${{ github.run_attempt }}
       GH_TOKEN: ${{ github.token }}
+      BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,11 +72,11 @@ jobs:
       - name: Require passing CI
         if: github.event_name == 'workflow_dispatch'
         run: |
-          # A changelog commit never runs CI (bot pushes don't trigger it), so
+          # A release commit never runs CI (bot pushes don't trigger it), so
           # check the commit it was made on.
           tested=$SHA
           if git rev-parse -q --verify HEAD^ > /dev/null &&
-            [ "$(git diff --name-only HEAD^ HEAD)" = CHANGELOG.md ] &&
+            [ "$(git log -1 --format=%ae HEAD)" = "$BOT_EMAIL" ] &&
             git log -1 --format=%s HEAD | grep -q '^Update changelog for '; then
             tested=$(git rev-parse HEAD^)
           fi
@@ -124,9 +129,9 @@ jobs:
             echo "at_head=$existing"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Roll changelog
+      - name: Roll changelog and set version
         id: changelog
-        if: steps.version.outputs.new == 'true' && hashFiles('CHANGELOG.md') != ''
+        if: steps.version.outputs.new == 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
           PREVIOUS: ${{ steps.version.outputs.previous }}
@@ -141,28 +146,38 @@ jobs:
             awk -F '\t' -v sha="$SHA" -v subject="Update changelog for $TAG" \
               '$2 == sha && $3 == subject { print $1 }')
           if [ -n "$rolled" ]; then
-            git show "$rolled:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"
-            python3 .github/scripts/roll_changelog.py --notes "$RUNNER_TEMP/CHANGELOG.md" "$TAG" "$notes"
-            echo "Changelog for $TAG is already on main ($rolled); releasing that."
+            echo "Release commit for $TAG is already on main ($rolled); releasing that."
             echo "sha=$rolled" >> "$GITHUB_OUTPUT"
-            echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            if git show "$rolled:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md" 2> /dev/null &&
+              python3 .github/scripts/roll_changelog.py --notes "$RUNNER_TEMP/CHANGELOG.md" "$TAG" "$notes"; then
+              echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
-          python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
-            "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
+          if [ -f CHANGELOG.md ]; then
+            python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
+              "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
+          fi
+          if [ -f .github/scripts/set_version.sh ]; then
+            bash .github/scripts/set_version.sh "${TAG#v}"
+          fi
           if git diff --quiet; then
-            echo "Nothing under [Unreleased]; using generated notes."
+            echo "Nothing under [Unreleased] and no version files; using generated notes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "$BOT_EMAIL"
           git commit -qam "Update changelog for $TAG"
-          # Fast-forward only: if main moved past $SHA, leave the changelog alone.
+          # Fast-forward only: if main moved past $SHA, leave it alone.
           if git push origin HEAD:refs/heads/main; then
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-            echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            if [ -s "$notes" ]; then
+              echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            else
+              echo "Nothing under [Unreleased]; using generated notes."
+            fi
           else
-            echo "::warning::main moved past $SHA; changelog entries stay under [Unreleased]."
+            echo "::warning::main moved past $SHA; the changelog and version changes for $TAG weren't pushed."
           fi
 
       - name: Create release
