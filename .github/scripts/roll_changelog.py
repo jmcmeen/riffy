@@ -1,6 +1,7 @@
 """Move CHANGELOG.md's [Unreleased] entries under a new version heading.
 
 Usage: roll_changelog.py CHANGELOG TAG PREVIOUS_TAG DATE NOTES_OUT [TAG_ALREADY_AT_HEAD]
+       roll_changelog.py --notes CHANGELOG TAG NOTES_OUT
 
 Called by release.yml. Writes the release notes to NOTES_OUT and edits the
 changelog in place; touches neither when there is nothing to release:
@@ -12,6 +13,10 @@ changelog in place; touches neither when there is nothing to release:
   points at that release, whose entries become the notes.
 
 Keep a Changelog link references at the bottom are updated when present.
+
+With --notes, CHANGELOG has already been rolled for TAG (a re-run resuming a
+release whose changelog commit reached main): only the notes are written, the
+same ones the roll produced. Exits 1 if CHANGELOG has no section for TAG.
 """
 
 from __future__ import annotations
@@ -47,6 +52,20 @@ def update_links(text: str, version: str, base: str) -> str:
     return text[: m.start()] + new + text[m.end() :]
 
 
+SAME_CODE = re.compile(r"^Same code as (?P<tag>v\S+), released as \S+\.")
+
+
+def rolled_notes(path: str, tag: str, notes_out: str) -> None:
+    text = Path(path).read_text()
+    rolled = section(text, tag.removeprefix("v"))
+    if rolled is None:
+        sys.exit(f"{path} has no section for {tag}")
+    notes = text[rolled[1] : rolled[2]].strip()
+    if (m := SAME_CODE.match(notes)) and (shipped := section(text, m["tag"].removeprefix("v"))):
+        notes = f"{notes}\n\n{text[shipped[1] : shipped[2]].strip()}"
+    Path(notes_out).write_text(notes + "\n")
+
+
 def main(path: str, tag: str, previous: str, date: str, notes_out: str, at_head: str = "") -> None:
     file = Path(path)
     text = file.read_text()
@@ -74,4 +93,7 @@ def main(path: str, tag: str, previous: str, date: str, notes_out: str, at_head:
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:])
+    if sys.argv[1:2] == ["--notes"]:
+        rolled_notes(*sys.argv[2:])
+    else:
+        main(*sys.argv[1:])

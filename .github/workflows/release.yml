@@ -133,6 +133,21 @@ jobs:
           AT_HEAD: ${{ steps.version.outputs.at_head }}
         run: |
           notes="$RUNNER_TEMP/notes.md"
+          # A re-run after this changelog commit reached main but the release
+          # wasn't created: release that commit, with the notes it rolled,
+          # rather than rolling $SHA again (that push would be rejected).
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          rolled=$(git log --format='%H%x09%P%x09%s' "$SHA..origin/main" |
+            awk -F '\t' -v sha="$SHA" -v subject="Update changelog for $TAG" \
+              '$2 == sha && $3 == subject { print $1 }')
+          if [ -n "$rolled" ]; then
+            git show "$rolled:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"
+            python3 .github/scripts/roll_changelog.py --notes "$RUNNER_TEMP/CHANGELOG.md" "$TAG" "$notes"
+            echo "Changelog for $TAG is already on main ($rolled); releasing that."
+            echo "sha=$rolled" >> "$GITHUB_OUTPUT"
+            echo "notes=$notes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
             "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
           if git diff --quiet; then
