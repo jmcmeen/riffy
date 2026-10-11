@@ -10,10 +10,8 @@ name: Release
 # [Unreleased] entries move under the new version in a github-actions[bot]
 # commit on main, along with any set_version.sh edits; that commit is what gets
 # tagged, and the entries become the release notes. If main has moved on by
-# then, nothing is pushed: the entries stay put and roll into the next release
-# (GitHub's generated notes are used for this one). A repo with set_version.sh
-# isn't released then (its merge still has the old version); the release for
-# the newer merge includes it.
+# then, nothing is pushed and this merge isn't released on its own: the release
+# for the newer merge includes it (a manual minor/major run says to run again).
 #
 # For a minor or major release, run this workflow by hand on main ("Run
 # workflow", or `gh workflow run release.yml -f bump=minor`). It releases the
@@ -101,32 +99,48 @@ jobs:
               *) echo "v$major.$minor.$((patch + 1))" ;;
             esac
           }
-          # This commit's releases: tags on it, or on a changelog commit made
-          # on top of it. `mine` is the newest.
-          mine=$(git tag --points-at HEAD | grep -E "$semver" || true)
+          first() { if [ "$BUMP" = major ]; then echo v1.0.0; else echo v0.1.0; fi; }
+          # This commit's releases, oldest first: tags on it, or on a release
+          # commit the bot made on top of it.
+          ours=$(git tag --points-at HEAD | grep -E "$semver" || true)
           for t in $(git tag --contains HEAD | grep -E "$semver" || true); do
             if [ "$(git rev-parse "$t^{commit}^")" = "$(git rev-parse HEAD)" ] &&
+              [ "$(git log -1 --format=%ae "$t")" = "$BOT_EMAIL" ] &&
               git log -1 --format=%s "$t" | grep -q '^Update changelog for '; then
-              mine="$mine $t"
+              ours="$ours $t"
             fi
           done
-          mine=$(printf '%s\n' $mine | sort -V | tail -1)
-          # A patch run on a released commit retries that release. A minor or
-          # major run retries only its own bump: `mine` must be the bump of the
-          # release before it, not the earlier release it bumps from.
-          if [ -n "$mine" ] && [ "$BUMP" != patch ]; then
-            base=$(git tag --merged HEAD | grep -E "$semver" | grep -vxF "$mine" | sort -V | tail -1 || true)
-            [ -n "$base" ] && [ "$(bump "$base")" = "$mine" ] || retry=no
+          ours=$(printf '%s\n' $ours | grep . | sort -uV || true)
+          newest=$(printf '%s\n' $ours | tail -1)
+          if [ "$BUMP" = patch ]; then
+            # A patch run on a released commit retries its newest release.
+            retry=$newest
+          else
+            # A minor or major run retries only its own bump: a tag of this
+            # commit that is exactly that bump of the release before it, or the
+            # first release when there is none before it. (Asking for the same
+            # bump again on the same commit counts as a retry: releasing
+            # identical code under two new minor versions is never wanted.)
+            retry=
+            merged=$(git tag --merged HEAD | grep -E "$semver" || true)
+            for t in $ours; do
+              base=$(printf '%s\n' $merged "$t" | sort -uV | grep -B1 -xF "$t" | grep -vxF "$t" || true)
+              if { [ -n "$base" ] && [ "$(bump "$base")" = "$t" ]; } ||
+                { [ -z "$base" ] && [ "$t" = "$(first)" ]; }; then
+                retry=$t
+              fi
+            done
           fi
-          if [ -n "$mine" ] && [ "${retry:-}" != no ]; then
-            echo "$SHA is already $mine; retrying its release and publish."
-            echo "tag=$mine" >> "$GITHUB_OUTPUT"
+          if [ -n "$retry" ]; then
+            echo "$SHA is already $retry; retrying its release and publish."
+            echo "tag=$retry" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           latest=$(git tag --list 'v*' | grep -E "$semver" | sort -V | tail -1 || true)
           if [ -z "$latest" ]; then
-            if [ "$BUMP" = major ]; then next=v1.0.0; else next=v0.1.0; fi
-          elif [ -z "$mine" ] && git merge-base --is-ancestor HEAD "$latest"; then
+            next=$(first)
+          elif git merge-base --is-ancestor HEAD "$latest" &&
+            ! printf '%s\n' $ours | grep -qxF "$latest"; then
             echo "$SHA is already included in $latest; nothing to do."
             exit 0
           else
@@ -137,7 +151,7 @@ jobs:
             echo "tag=$next"
             echo "new=true"
             echo "previous=$latest"
-            echo "at_head=$mine"
+            echo "at_head=$newest"
           } >> "$GITHUB_OUTPUT"
 
       - name: Roll changelog and set version
@@ -153,9 +167,9 @@ jobs:
           # wasn't created: release that commit, with the notes it rolled,
           # rather than rolling $SHA again (that push would be rejected).
           git fetch -q origin +refs/heads/main:refs/remotes/origin/main
-          rolled=$(git log --format='%H%x09%P%x09%s' "$SHA..origin/main" |
-            awk -F '\t' -v sha="$SHA" -v subject="Update changelog for $TAG" \
-              '$2 == sha && $3 == subject { print $1 }')
+          rolled=$(git log --format='%H%x09%P%x09%ae%x09%s' "$SHA..origin/main" |
+            awk -F '\t' -v sha="$SHA" -v bot="$BOT_EMAIL" -v subject="Update changelog for $TAG" \
+              '$2 == sha && $3 == bot && $4 == subject { print $1 }')
           if [ -n "$rolled" ]; then
             echo "Release commit for $TAG is already on main ($rolled); releasing that."
             echo "sha=$rolled" >> "$GITHUB_OUTPUT"
@@ -169,18 +183,18 @@ jobs:
             python3 .github/scripts/roll_changelog.py CHANGELOG.md "$TAG" "$PREVIOUS" \
               "$(date -u +%Y-%m-%d)" "$notes" "$AT_HEAD"
           fi
-          versioned=
           if [ -f .github/scripts/set_version.sh ]; then
             bash .github/scripts/set_version.sh "${TAG#v}"
-            git diff --quiet -- . ':!CHANGELOG.md' || versioned=1
           fi
-          if git diff --quiet; then
+          # Stage everything, so files the hook creates or stages are included.
+          git add -A
+          if git diff --cached --quiet; then
             echo "Nothing under [Unreleased] and no version files; using generated notes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "$BOT_EMAIL"
-          git commit -qam "Update changelog for $TAG"
+          git commit -qm "Update changelog for $TAG"
           # Fast-forward only: if main moved past $SHA, leave it alone.
           if git push origin HEAD:refs/heads/main; then
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -189,17 +203,20 @@ jobs:
             else
               echo "Nothing under [Unreleased]; using generated notes."
             fi
-          elif [ -n "$versioned" ]; then
-            # Tagging $SHA would ship the old version from the version files.
-            # The release run for the newer merge on main covers this one.
-            echo "::error::main moved past $SHA; not releasing $TAG without its version bump (the newer merge's release includes this one)."
-            exit 1
-          else
-            echo "::warning::main moved past $SHA; changelog entries stay under [Unreleased]."
+            exit 0
           fi
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+            echo "::error::Pushing the release commit for $TAG failed, and main hasn't moved."
+            exit 1
+          fi
+          # Releasing $SHA as is would leave its entries under [Unreleased]
+          # (they'd appear in the next release too) and miss the version files.
+          echo "::notice::main moved past $SHA; not releasing $TAG here. The release for the newer merge includes this one (for a manual minor/major run, run it again)."
+          echo "skip=true" >> "$GITHUB_OUTPUT"
 
       - name: Create release
-        if: steps.version.outputs.tag != ''
+        if: steps.version.outputs.tag != '' && steps.changelog.outputs.skip != 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
           TARGET: ${{ steps.changelog.outputs.sha || env.SHA }}

@@ -31,11 +31,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Require a release tag
+      - name: Require a release tag on main
         run: |
-          # Run by hand on a branch, this would build and upload a dev version.
+          # Run by hand on a branch, this would build and upload a dev version;
+          # on a tag off main, code that never went through main and its CI.
           if [ "$GITHUB_REF_TYPE" != tag ] || ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Publish only runs on a vX.Y.Z tag, not $GITHUB_REF_TYPE '$GITHUB_REF_NAME'."
+            exit 1
+          fi
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME isn't on main; only release tags from main are published."
             exit 1
           fi
 
