@@ -163,6 +163,28 @@ jobs:
           AT_HEAD: ${{ steps.version.outputs.at_head }}
         run: |
           notes="$RUNNER_TEMP/notes.md"
+          # True if a newer commit on main includes $SHA. Fails the step if main
+          # no longer contains $SHA at all (rewritten): releasing it would
+          # publish code that isn't on main, and skipping would hide that.
+          main_moved_past_sha() {
+            # Called inside `if`, where set -e is off: check the fetch by hand
+            # so a stale origin/main never decides a release.
+            if ! git fetch -q origin +refs/heads/main:refs/remotes/origin/main; then
+              echo "::error::Fetching main failed; can't tell whether it moved past $SHA."
+              exit 1
+            fi
+            [ "$(git rev-parse origin/main)" != "$SHA" ] || return 1
+            if ! git merge-base --is-ancestor "$SHA" origin/main; then
+              echo "::error::main no longer contains $SHA; not releasing $TAG."
+              exit 1
+            fi
+          }
+          # Releasing $SHA as is would leave its entries under [Unreleased]
+          # (they'd appear in the next release too) and miss the version files.
+          skip_release() {
+            echo "::notice::main moved past $SHA; not releasing $TAG here. The release for the newer merge includes this one (for a manual minor/major run, run it again)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          }
           # A re-run after this changelog commit reached main but the release
           # wasn't created: release that commit, with the notes it rolled,
           # rather than rolling $SHA again (that push would be rejected).
@@ -190,6 +212,10 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "Nothing under [Unreleased] and no version files; using generated notes."
+            # Nothing to push, so main moving on isn't caught by the push below.
+            if main_moved_past_sha; then
+              skip_release
+            fi
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -205,15 +231,11 @@ jobs:
             fi
             exit 0
           fi
-          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
-          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+          if ! main_moved_past_sha; then
             echo "::error::Pushing the release commit for $TAG failed, and main hasn't moved."
             exit 1
           fi
-          # Releasing $SHA as is would leave its entries under [Unreleased]
-          # (they'd appear in the next release too) and miss the version files.
-          echo "::notice::main moved past $SHA; not releasing $TAG here. The release for the newer merge includes this one (for a manual minor/major run, run it again)."
-          echo "skip=true" >> "$GITHUB_OUTPUT"
+          skip_release
 
       - name: Create release
         if: steps.version.outputs.tag != '' && steps.changelog.outputs.skip != 'true'
