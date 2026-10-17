@@ -167,7 +167,12 @@ jobs:
           # no longer contains $SHA at all (rewritten): releasing it would
           # publish code that isn't on main, and skipping would hide that.
           main_moved_past_sha() {
-            git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+            # Called inside `if`, where set -e is off: check the fetch by hand
+            # so a stale origin/main never decides a release.
+            if ! git fetch -q origin +refs/heads/main:refs/remotes/origin/main; then
+              echo "::error::Fetching main failed; can't tell whether it moved past $SHA."
+              exit 1
+            fi
             [ "$(git rev-parse origin/main)" != "$SHA" ] || return 1
             if ! git merge-base --is-ancestor "$SHA" origin/main; then
               echo "::error::main no longer contains $SHA; not releasing $TAG."
