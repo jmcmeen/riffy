@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-27
+
 ### Added
 
 - CI tests and PyPI classifiers cover Python 3.15.
@@ -243,7 +245,8 @@ Python versions.
   chunk access, audio metadata extraction, a custom exception hierarchy, and
   full type hints. Zero external dependencies.
 
-[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/jmcmeen/riffy/compare/v0.3.3...v0.3.4
 [0.3.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.1
 [0.3.0]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.0
 [0.2.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.2.1
