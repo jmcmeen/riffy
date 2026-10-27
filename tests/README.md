@@ -126,7 +126,7 @@ One defensive line in `wav.py` (the chunk-ID length check, unreachable because
 ## Continuous Integration
 
 Tests run on every push and pull request via GitHub Actions across Python
-3.10–3.14. Tests are designed to:
+3.10–3.15. Tests are designed to:
 - Run fast (~1 second for the full suite)
 - Be deterministic (no random failures)
 - Clean up temporary files (via `tmp_path`)
