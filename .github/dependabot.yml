@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Every merge to main cuts a release, so updates are grouped into one PR per
-  # ecosystem each week. Major dependency bumps still get their own PRs.
+  # Merges to main cut releases, so scheduled updates are grouped into one PR
+  # per ecosystem each week. Major bumps and security updates get their own PRs.
   - package-ecosystem: uv
     directory: "/"
     schedule:
