@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-10-31
+
 ### Fixed
 
 - `write_wav` keeps the file's chunk order instead of writing `fmt `, `data`,
@@ -318,7 +320,8 @@ Python versions.
   chunk access, audio metadata extraction, a custom exception hierarchy, and
   full type hints. Zero external dependencies.
 
-[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.9...HEAD
+[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.10...HEAD
+[0.3.10]: https://github.com/jmcmeen/riffy/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/jmcmeen/riffy/compare/v0.3.8...v0.3.9
 [0.3.4]: https://github.com/jmcmeen/riffy/compare/v0.3.3...v0.3.4
 [0.3.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.1
