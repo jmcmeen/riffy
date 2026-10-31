@@ -11,6 +11,7 @@ constructive in all project interactions.
    ```bash
    git clone https://github.com/<your-username>/riffy.git
    cd riffy
+   git remote add upstream https://github.com/jmcmeen/riffy.git
    ```
 
 2. Create and activate a virtual environment (Python 3.10+):
@@ -35,10 +36,12 @@ constructive in all project interactions.
 
 ## Development Workflow
 
-Create a feature branch off `main`:
+Create a branch from an up-to-date `upstream/main`, named after the kind of change
+(`feat/`, `fix/`, `docs/`, `refactor/`, `test/`, ...):
 
 ```bash
-git checkout -b feature/short-description
+git fetch upstream
+git switch -c feat/short-description --no-track upstream/main
 ```
 
 Make your change, then run the full local check suite before opening a PR:
