@@ -92,7 +92,10 @@ def _print_inspect(data: dict) -> None:
     print(f"File:      {data['file']}")
     print(f"RIFF form: {data['riff_form']}")
     fmt = data["format"]
-    print(f"Format:    {fmt['sample_rate']} Hz, {fmt['channels']} ch, {fmt['bits_per_sample']}-bit")
+    print(
+        f"Format:    {fmt['sample_rate']} Hz, {fmt['channels']} ch, "
+        f"{fmt['bits_per_sample']}-bit ({fmt['description']})"
+    )
     sources = data["sources"]
     print(f"Metadata:  {', '.join(sources) if sources else '(none detected)'}")
 
@@ -243,12 +246,11 @@ def _cmd_info(argv: Sequence[str] | None) -> int:
         return 0
 
     fmt = info["format"]
-    kind = "PCM" if fmt["is_pcm"] else "non-PCM"
     print(f"File:        {info['file_path']}")
     print(f"RIFF form:   {wav.riff_form}")
     print(
         f"Format:      {fmt['sample_rate']} Hz, {fmt['channels']} ch, "
-        f"{fmt['bits_per_sample']}-bit ({kind})"
+        f"{fmt['bits_per_sample']}-bit ({fmt['description']})"
     )
     print(f"Byte rate:   {fmt['byte_rate']:,} B/s")
     print(f"Duration:    {info['duration_seconds']:.3f} s")

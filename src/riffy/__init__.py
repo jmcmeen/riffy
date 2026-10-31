@@ -56,7 +56,14 @@ from .metadata import (
     dump_metadata,
     read_metadata,
 )
-from .wav import WAVChunk, WAVFormat, WAVParser
+from .wav import (
+    WAVE_FORMAT_EXTENSIBLE,
+    WAVE_FORMAT_IEEE_FLOAT,
+    WAVE_FORMAT_PCM,
+    WAVChunk,
+    WAVFormat,
+    WAVParser,
+)
 
 __all__ = [
     # Version
@@ -65,6 +72,9 @@ __all__ = [
     # WAV parsing
     "WAVParser",
     "WAVFormat",
+    "WAVE_FORMAT_EXTENSIBLE",
+    "WAVE_FORMAT_IEEE_FLOAT",
+    "WAVE_FORMAT_PCM",
     "WAVChunk",
     # Recorder metadata
     "read_metadata",

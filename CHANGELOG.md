@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`WAVE_FORMAT_EXTENSIBLE` and IEEE float WAVs.** 24-bit and multichannel
+  recorder files written as extensible with a PCM subformat, and 32/64-bit
+  float files (plain format 3, or extensible with the float subformat), now
+  parse instead of raising `UnsupportedFormatError`. `WAVFormat` gains
+  `subformat`, `valid_bits_per_sample`, `channel_mask`, `is_extensible`,
+  `is_float` and `effective_format`; `is_pcm` is true for extensible PCM too.
+  `get_info()["format"]` reports them, plus a `description` such as
+  `"PCM, extensible"` that both `riffy` and `riffy info` print. The format
+  codes are exported as `WAVE_FORMAT_PCM`, `WAVE_FORMAT_IEEE_FLOAT` and
+  `WAVE_FORMAT_EXTENSIBLE`.
+- `WAVFormat.frame_size` and `WAVFormat.describe()`.
+- Float files must be 32 or 64 bits, and an extensible file's valid bits can't
+  exceed its container; either problem raises `InvalidWAVFormatError`. A
+  `block_align` that doesn't match the channels and bit depth now warns.
+
+### Fixed
+
+- `sample_count` rounds bit depths up to whole bytes, so 12- and 20-bit audio
+  are counted correctly (it used to divide by the truncated byte count).
+- Replacing the `fmt ` chunk with `replace_chunk`/`set_chunk` re-parses
+  `format_info`, so it no longer reports the old format.
+
 ## [0.3.4] - 2026-10-27
 
 ### Added

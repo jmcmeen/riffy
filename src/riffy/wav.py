@@ -1,4 +1,5 @@
 import struct
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -12,10 +13,36 @@ from .exceptions import (
     WAVError,
 )
 
+# Format codes (wFormatTag) riffy understands. Extensible files carry the real
+# format code in the first two bytes of their subformat GUID.
+WAVE_FORMAT_PCM = 0x0001
+WAVE_FORMAT_IEEE_FLOAT = 0x0003
+WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+# The 14 bytes after the format code in every KSDATAFORMAT_SUBTYPE_* GUID of the
+# {XXXXXXXX-0000-0010-8000-00AA00389B71} family, as stored in a fmt chunk.
+_KSDATAFORMAT_GUID_TAIL = bytes.fromhex("000000001000800000aa00389b71")
+# Names for describe(); unknown codes are shown by number.
+_FORMAT_NAMES = {
+    WAVE_FORMAT_PCM: "PCM",
+    0x0002: "ADPCM",
+    WAVE_FORMAT_IEEE_FLOAT: "IEEE float",
+    0x0006: "A-law",
+    0x0007: "mu-law",
+    0x0011: "IMA ADPCM",
+    0x0055: "MPEG Layer 3",
+}
+
 
 @dataclass
 class WAVFormat:
-    """WAV format information."""
+    """WAV format information.
+
+    For ``WAVE_FORMAT_EXTENSIBLE`` files (``audio_format == 0xFFFE``) the
+    extension fields are filled in: ``subformat`` is the format code from the
+    subformat GUID (``None`` if the GUID isn't a standard KSDATAFORMAT one),
+    ``valid_bits_per_sample`` the bits that carry signal, and ``channel_mask``
+    the speaker-position bitmask.
+    """
 
     audio_format: int
     channels: int
@@ -24,11 +51,46 @@ class WAVFormat:
     block_align: int
     bits_per_sample: int
     duration_seconds: float = 0.0
+    subformat: int | None = None
+    valid_bits_per_sample: int | None = None
+    channel_mask: int | None = None
+
+    @property
+    def is_extensible(self) -> bool:
+        """Whether the file uses ``WAVE_FORMAT_EXTENSIBLE``."""
+        return self.audio_format == WAVE_FORMAT_EXTENSIBLE
+
+    @property
+    def effective_format(self) -> int | None:
+        """The format code that describes the samples.
+
+        ``audio_format`` for ordinary files; the subformat for extensible ones
+        (``None`` when an extensible file's subformat isn't recognized).
+        """
+        return self.subformat if self.is_extensible else self.audio_format
 
     @property
     def is_pcm(self) -> bool:
-        """Check if format is PCM (uncompressed)."""
-        return self.audio_format == 1
+        """Whether the samples are integer PCM (plain, or extensible with a PCM subformat)."""
+        return self.effective_format == WAVE_FORMAT_PCM
+
+    @property
+    def is_float(self) -> bool:
+        """Whether the samples are IEEE float (format 3, or extensible with a float subformat)."""
+        return self.effective_format == WAVE_FORMAT_IEEE_FLOAT
+
+    @property
+    def frame_size(self) -> int:
+        """Bytes per frame (one sample for every channel): channels x whole bytes per sample."""
+        return self.channels * -(-self.bits_per_sample // 8)
+
+    def describe(self) -> str:
+        """A short name for the sample format, e.g. ``"PCM"``, ``"IEEE float, extensible"``."""
+        if self.is_extensible:
+            if self.subformat is None:
+                return "extensible (unrecognized subformat GUID)"
+            return f"{_FORMAT_NAMES.get(self.subformat, f'format {self.subformat}')}, extensible"
+        return _FORMAT_NAMES.get(self.audio_format, f"format {self.audio_format}")
 
 
 @dataclass
@@ -239,14 +301,16 @@ class WAVParser:
         fmt_data = struct.unpack("<HHIIHH", data[:16])
         audio_format = fmt_data[0]
 
-        # Non-PCM formats have extra fields (cbSize + extension data)
-        if audio_format != 1 and len(data) < 18:
+        # Non-PCM formats have extra fields (cbSize + extension data). IEEE
+        # float is exempt: plenty of writers emit a bare 16-byte fmt chunk for it.
+        if audio_format not in (WAVE_FORMAT_PCM, WAVE_FORMAT_IEEE_FLOAT) and len(data) < 18:
             raise InvalidWAVFormatError(
                 f"Non-PCM format (type {audio_format}) requires at least 18 bytes in format chunk"
             )
 
         # For non-PCM formats, read cbSize to validate extension data
-        if audio_format != 1:
+        cb_size = 0
+        if audio_format != WAVE_FORMAT_PCM and len(data) >= 18:
             cb_size = struct.unpack("<H", data[16:18])[0]
             expected_size = 18 + cb_size
             if len(data) < expected_size:
@@ -255,6 +319,18 @@ class WAVParser:
                     f"({expected_size} bytes) for format type {audio_format}"
                 )
 
+        subformat = valid_bits = channel_mask = None
+        if audio_format == WAVE_FORMAT_EXTENSIBLE:
+            # WAVEFORMATEXTENSIBLE: wValidBitsPerSample, dwChannelMask, SubFormat GUID.
+            if cb_size < 22:
+                raise InvalidWAVFormatError(
+                    f"WAVE_FORMAT_EXTENSIBLE needs a 22-byte extension, got cbSize={cb_size}"
+                )
+            valid_bits, channel_mask = struct.unpack("<HI", data[18:24])
+            guid = data[24:40]
+            if guid[2:] == _KSDATAFORMAT_GUID_TAIL:
+                subformat = struct.unpack("<H", guid[:2])[0]
+
         self.format_info = WAVFormat(
             audio_format=audio_format,
             channels=fmt_data[1],
@@ -262,6 +338,9 @@ class WAVParser:
             byte_rate=fmt_data[3],
             block_align=fmt_data[4],
             bits_per_sample=fmt_data[5],
+            subformat=subformat,
+            valid_bits_per_sample=valid_bits,
+            channel_mask=channel_mask,
         )
 
     def _calculate_duration(self) -> None:
@@ -274,9 +353,35 @@ class WAVParser:
         if not self.format_info:
             raise MissingChunkError("No 'fmt ' chunk found")
 
-        if not self.format_info.is_pcm:
+        fmt = self.format_info
+        if not (fmt.is_pcm or fmt.is_float):
             raise UnsupportedFormatError(
-                f"Unsupported audio format: {self.format_info.audio_format} (only PCM is supported)"
+                f"Unsupported audio format: {fmt.describe()} "
+                "(only PCM and IEEE float are supported)"
+            )
+
+        if fmt.bits_per_sample == 0:
+            raise InvalidWAVFormatError("Invalid bits per sample")
+
+        if fmt.is_float and fmt.bits_per_sample not in (32, 64):
+            raise InvalidWAVFormatError(
+                f"IEEE float samples must be 32 or 64 bits, not {fmt.bits_per_sample}"
+            )
+
+        if (
+            fmt.valid_bits_per_sample is not None
+            and fmt.valid_bits_per_sample > fmt.bits_per_sample
+        ):
+            raise InvalidWAVFormatError(
+                f"Valid bits per sample ({fmt.valid_bits_per_sample}) exceed the "
+                f"{fmt.bits_per_sample}-bit container"
+            )
+
+        if fmt.block_align != fmt.frame_size and fmt.channels:
+            warnings.warn(
+                f"fmt: block_align is {fmt.block_align} but {fmt.channels} channel(s) of "
+                f"{fmt.bits_per_sample}-bit samples need {fmt.frame_size}; using {fmt.frame_size}",
+                stacklevel=2,
             )
 
         if self.format_info.channels == 0:
@@ -303,7 +408,13 @@ class WAVParser:
                 "byte_rate": self.format_info.byte_rate,
                 "block_align": self.format_info.block_align,
                 "bits_per_sample": self.format_info.bits_per_sample,
+                "description": self.format_info.describe(),
                 "is_pcm": self.format_info.is_pcm,
+                "is_float": self.format_info.is_float,
+                "is_extensible": self.format_info.is_extensible,
+                "subformat": self.format_info.subformat,
+                "valid_bits_per_sample": self.format_info.valid_bits_per_sample,
+                "channel_mask": self.format_info.channel_mask,
             },
             "duration_seconds": self.format_info.duration_seconds,
             "audio_data_size": len(self.audio_data) if self.audio_data else 0,
@@ -342,8 +453,8 @@ class WAVParser:
         if not self.audio_data or not self.format_info:
             return 0
 
-        bytes_per_sample = self.format_info.bits_per_sample // 8
-        return len(self.audio_data) // (bytes_per_sample * self.format_info.channels)
+        frame_size = self.format_info.frame_size
+        return len(self.audio_data) // frame_size if frame_size else 0
 
     def export_chunk(self, chunk_id: str, output_path: str | Path) -> int:
         """
@@ -481,8 +592,11 @@ class WAVParser:
             offset=old_chunk.offset,  # Offset will be recalculated on write
         )
 
-        # Update audio_data if this is the data chunk
-        if chunk_id == "data":
+        # Keep format/audio state in step with the edited chunk
+        if chunk_id == "fmt ":
+            self._parse_format_chunk(self.chunks["fmt "][0].data)
+            self._calculate_duration()
+        elif chunk_id == "data":
             self.audio_data = new_data
             self._calculate_duration()
 
@@ -772,8 +886,8 @@ class WAVParser:
             elif chunk.size > _SIZE32_MAX:
                 table[chunk.id] = chunk.size
 
-        block_align = self.format_info.block_align if self.format_info else 0
-        sample_count = data_size // block_align if block_align else 0
+        frame_size = self.format_info.frame_size if self.format_info else 0
+        sample_count = data_size // frame_size if frame_size else 0
 
         ds64_payload = self._build_ds64_payload(0, data_size, sample_count, table)
         ds64_chunk_len = len(ds64_payload)  # 28 + 12*len(table); always even
