@@ -34,7 +34,7 @@ print(parser.list_chunks())
 ## Exporting data
 
 ```python
-parser.export_audio_data("audio.bin")     # the raw 'data' chunk
+parser.export_audio_data("audio.bin")  # the raw 'data' chunk
 parser.export_chunk("fmt ", "format.bin")  # any chunk by ID
 ```
 
@@ -46,8 +46,8 @@ parser.export_chunk("fmt ", "format.bin")  # any chunk by ID
 parser = WAVParser("audio.wav")
 
 parser.replace_chunk("data", new_audio_bytes)
-parser.add_chunk("INFO", b"Artist: Example\x00")   # IDs are 4 ASCII chars
-parser.set_chunk("NOTE", b"recorded 2026\x00")      # add or replace
+parser.add_chunk("INFO", b"Artist: Example\x00")  # IDs are 4 ASCII chars
+parser.set_chunk("NOTE", b"recorded 2026\x00")  # add or replace
 
 bytes_written = parser.write_wav("modified.wav")
 ```
@@ -66,7 +66,7 @@ metadata standard it finds:
 from riffy import read_metadata
 
 meta = read_metadata("recording.wav")
-print(meta.sources)          # e.g. ('guano',) or ('info', 'audiomoth')
+print(meta.sources)  # e.g. ('guano',) or ('info', 'audiomoth')
 
 if meta.guano is not None:
     print(meta.guano.timestamp, meta.guano.loc_position)

@@ -18,10 +18,10 @@ Fetching a single chunk — use the new convenience accessor:
 
 ```python
 # v0.2.x
-fmt = parser.chunks["fmt "]          # a WAVChunk
+fmt = parser.chunks["fmt "]  # a WAVChunk
 
 # v0.3.0
-fmt = parser.get_chunk("fmt ")       # the first WAVChunk, or None
+fmt = parser.get_chunk("fmt ")  # the first WAVChunk, or None
 # or, explicitly:
 fmt = parser.chunks["fmt "][0]
 ```

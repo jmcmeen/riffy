@@ -1,34 +1,80 @@
-name: Publish to PyPI
+name: Publish
+
+# Publishes to PyPI when a GitHub Release is published, or when release.yml
+# starts it on a new tag. It only runs on a vX.Y.Z tag.
+#
+# Uses PyPI Trusted Publishing (OIDC) — no API token/secret required. Before the
+# first release, configure a Trusted Publisher on PyPI for this project:
+#   PyPI → project "riffy" → Settings → Publishing → add a GitHub publisher with
+#   owner=jmcmeen, repo=riffy, workflow=publish.yml, environment=pypi.
+# Also create a GitHub environment named "pypi" (Settings → Environments).
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # full history + tags for hatch-vcs versioning
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Require a release tag on main
+        run: |
+          # Run by hand on a branch, this would build and upload a dev version;
+          # on a tag off main, code that never went through main and its CI.
+          if [ "$GITHUB_REF_TYPE" != tag ] || ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Publish only runs on a vX.Y.Z tag, not $GITHUB_REF_TYPE '$GITHUB_REF_NAME'."
+            exit 1
+          fi
+          git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME isn't on main; only release tags from main are published."
+            exit 1
+          fi
+
+      - name: Build sdist + wheel
+        run: |
+          # Version from the tag this run is on, not `git describe`: when two
+          # tags share a commit, describe can pick the older one.
+          export SETUPTOOLS_SCM_PRETEND_VERSION="${GITHUB_REF_NAME#v}"
+          uv build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/riffy
     permissions:
-      id-token: write # required for PyPI Trusted Publishing (OIDC)
+      id-token: write # required for trusted publishing
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
+      - name: Download built distributions
+        uses: actions/download-artifact@v8
         with:
-          fetch-depth: 0 # full history + tags so hatch-vcs derives the version
+          name: dist
+          path: dist/
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Build sdist and wheel
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build
-
-      - name: Publish distributions to PyPI
+      - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
-        # OIDC trusted publishing is auto-detected; no API token needed.
+        with:
+          skip-existing: true # a retried release re-dispatches this
