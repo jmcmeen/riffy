@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-31
+
 ### Added
 
 - **Header-only parsing.** `WAVParser(path, read_audio=False)` records where
@@ -297,7 +299,8 @@ Python versions.
   chunk access, audio metadata extraction, a custom exception hierarchy, and
   full type hints. Zero external dependencies.
 
-[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/jmcmeen/riffy/compare/v0.3.9...HEAD
+[0.3.9]: https://github.com/jmcmeen/riffy/compare/v0.3.8...v0.3.9
 [0.3.4]: https://github.com/jmcmeen/riffy/compare/v0.3.3...v0.3.4
 [0.3.1]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.1
 [0.3.0]: https://github.com/jmcmeen/riffy/releases/tag/v0.3.0
