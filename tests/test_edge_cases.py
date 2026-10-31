@@ -296,7 +296,7 @@ class TestDefensiveGuards:
     def test_export_audio_data_requires_audio(self, valid_pcm_wav, tmp_path):
         """export_audio_data raises when audio_data is missing."""
         parser = WAVParser(valid_pcm_wav["filepath"])
-        parser.audio_data = None
+        parser.remove_chunk("data")
         with pytest.raises(WAVError, match="No audio data available"):
             parser.export_audio_data(tmp_path / "o.bin")
 

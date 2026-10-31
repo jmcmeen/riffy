@@ -269,6 +269,9 @@ Currently, Riffy supports:
 ## Limitations
 
 - **Uncompressed only**: compressed WAV formats (ADPCM, A-law, mu-law, MP3-in-WAV, …), and extensible files with any other subformat, are rejected with `UnsupportedFormatError`.
+- **Memory**: by default the whole file, audio included, is read into memory.
+  Pass `read_audio=False` to `WAVParser` to read only the headers and stream
+  the audio when writing or exporting; the metadata readers and CLI do this.
 - **Multiple chunks per ID**: `chunks` maps each chunk ID to a list of every
   occurrence in file order, so files containing multiple chunks with the same ID
   (e.g. several `LIST` chunks) preserve all of them. Use `get_chunk(id)` for the

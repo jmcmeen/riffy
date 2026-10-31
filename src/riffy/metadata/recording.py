@@ -86,7 +86,7 @@ def read_metadata(path: str | Path) -> RecordingMetadata:
         >>> meta.guano.make
         'Wildlife Acoustics, Inc.'
     """
-    return RecordingMetadata.from_parser(WAVParser(path))
+    return RecordingMetadata.from_parser(WAVParser(path, read_audio=False))
 
 
 def dump_metadata(path: str | Path) -> dict:
@@ -104,7 +104,7 @@ def dump_metadata(path: str | Path) -> dict:
     Returns:
         A JSON-serializable dict describing the file's metadata.
     """
-    parser = WAVParser(path)
+    parser = WAVParser(path, read_audio=False)
     meta = RecordingMetadata.from_parser(parser)
     ixml = IXmlMetadata.from_parser(parser)
 

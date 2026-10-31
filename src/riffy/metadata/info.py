@@ -122,8 +122,9 @@ class InfoMetadata:
             An :class:`InfoMetadata`, or ``None`` if the file has no INFO list.
         """
         for chunk in parser.get_chunks(CHUNK_ID):
-            if chunk.data[:4] == LIST_TYPE:
-                return cls.from_bytes(chunk.data)
+            data = parser.read_chunk_data(chunk)
+            if data[:4] == LIST_TYPE:
+                return cls.from_bytes(data)
         return None
 
     # ------------------------------------------------------------------ #
@@ -299,7 +300,7 @@ class InfoMetadata:
         payload = self.to_chunk_bytes()
         occurrences = parser.chunks.get(CHUNK_ID, [])
         for i, chunk in enumerate(occurrences):
-            if chunk.data[:4] == LIST_TYPE:
+            if parser.read_chunk_data(chunk)[:4] == LIST_TYPE:
                 occurrences[i] = WAVChunk(
                     id=CHUNK_ID, size=len(payload), data=payload, offset=chunk.offset
                 )
