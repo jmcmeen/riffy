@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `write_wav` keeps the file's chunk order instead of writing `fmt `, `data`,
+  then everything else sorted by ID. Metadata that sits ahead of `data`
+  (`bext`, `LIST`, a `JUNK` placeholder reserved for an RF64 upgrade) stays
+  there, chunks replaced in place keep their position, and chunks added in
+  memory go after the existing ones in the order they were added. `fmt ` is
+  still moved ahead of `data` if a file has them the other way round. An
+  unedited round-trip of a well-formed classic WAV is now byte-for-byte
+  identical.
+- The RF64/BW64 `ds64` size table holds one entry per chunk, in file order,
+  rather than one per chunk ID, so several oversized chunks with the same ID
+  (or a second oversized `data` chunk) each keep their own size on read and
+  write. A second `data` chunk now takes its size from the table even when the
+  first `data` chunk has an explicit 32-bit size.
+- Writing RF64/BW64 replaces a leading `JUNK` chunk that is exactly the size of
+  the `ds64` chunk (the placeholder EBU Tech 3306 reserves for an RF64
+  upgrade), instead of keeping it next to a new `ds64`.
+
 ## [0.3.9] - 2026-10-31
 
 ### Added
