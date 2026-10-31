@@ -158,9 +158,10 @@ bytes_written = parser.write_wav("modified.wav")
 print(f"Wrote {bytes_written} bytes")
 ```
 
-> **Note:** `write_wav` always writes the `fmt ` chunk first, then `data`, then any
-> remaining chunks in sorted order, so the output is not guaranteed to be byte-for-byte
-> identical to the input. See [Limitations](#limitations).
+> **Note:** `write_wav` keeps the file's chunk order and puts chunks you added after
+> the existing ones, in the order you added them. An unedited parse/write round-trip
+> of a well-formed classic WAV (correct sizes, padded, nothing after the last chunk)
+> is byte-for-byte identical. See [Limitations](#limitations).
 
 ### Reading Recorder Metadata
 
@@ -276,10 +277,12 @@ Currently, Riffy supports:
   occurrence in file order, so files containing multiple chunks with the same ID
   (e.g. several `LIST` chunks) preserve all of them. Use `get_chunk(id)` for the
   common single-occurrence case.
-- **Chunk ordering on write**: `write_wav` emits `fmt ` then `data` then remaining
-  chunks sorted by ID, so a parse/write round-trip may not be byte-for-byte identical.
-  (Classic WAV that fits in 32-bit sizes is written byte-for-byte identically; the
-  RF64/BW64 form is used only when a size crosses the 4 GB limit.)
+- **Chunk ordering on write**: `write_wav` keeps the file's chunk order, with added
+  chunks after the existing ones. It does move `fmt ` ahead of `data` if a file has
+  them the other way round, recomputes sizes and padding, and drops bytes after the
+  last chunk, so a malformed file isn't reproduced byte for byte. The RF64/BW64 form
+  is used only when a size crosses the 4 GB limit (or with `force_rf64`); a leading
+  `JUNK` chunk sized for `ds64` is then replaced by it.
 - **AudioMoth parsing is best-effort**: the comment format is undocumented and
   firmware-dependent. riffy decodes each field independently (partial extraction)
   and always keeps the raw comment string; newer firmware may leave some fields

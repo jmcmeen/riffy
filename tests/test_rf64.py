@@ -240,7 +240,7 @@ class TestWriteRf64:
         # Without a real >4 GB payload, assert the ds64 payload builder emits a
         # table entry for a chunk whose declared size exceeds 32 bits.
         payload = WAVParser._build_ds64_payload(
-            riff_size=10, data_size=20, sample_count=5, table={"big ": _SIZE32_MAX + 1}
+            riff_size=10, data_size=20, sample_count=5, table=[("big ", _SIZE32_MAX + 1)]
         )
         riff_size, data_size, sample_count, table_len = struct.unpack("<QQQI", payload[:28])
         assert (data_size, sample_count, table_len) == (20, 5, 1)

@@ -135,8 +135,10 @@ class _Ds64:
     riff_size: int
     data_size: int
     sample_count: int
-    # Per-chunk 64-bit sizes for non-``data`` chunks that exceed 4 GB, keyed by ID.
-    table: dict[str, int]
+    # 64-bit sizes from the ds64 size table, per chunk ID in file order, for
+    # chunks other than the first ``data`` that exceed 4 GB. A list per ID, so
+    # several oversized chunks with the same ID each keep their own size.
+    table: dict[str, list[int]]
 
 
 def _atomic_write(path: Path, write: "Callable[[Path], int]") -> int:
@@ -218,6 +220,14 @@ class WAVParser:
         # the 64-bit large-file variants.
         self.riff_form: str = _CLASSIC_FORM
         self._ds64: _Ds64 | None = None
+        self._ds64_pending: dict[str, list[int]] = {}
+        self._ds64_data_used = False
+        # Payload offsets of the chunks the last parse read. Write order keeps
+        # chunks at these offsets in file order; anything else counts as added.
+        self._parsed_offsets: set[int] = set()
+        # Chunks added through add_chunk/set_chunk, in the order they were added
+        # (strong references, so their id()s stay unique while listed).
+        self._added: list[WAVChunk] = []
 
         # Automatically parse the file on initialization
         self.parse()
@@ -245,6 +255,10 @@ class WAVParser:
         self.audio_size = 0
         self.riff_form = _CLASSIC_FORM
         self._ds64 = None
+        self._ds64_pending = {}
+        self._ds64_data_used = False
+        self._parsed_offsets = set()
+        self._added = []
 
         stat = self.file_path.stat()
         self._file_size = stat.st_size
@@ -300,8 +314,13 @@ class WAVParser:
             # other chunks).
             if self.is_rf64 and chunk_size == _SIZE32_MAX:
                 chunk_size = self._resolve_ds64_size(chunk_id)
+            if chunk_id == "data":
+                # Only the first data chunk uses ds64's dedicated size field,
+                # whether or not it carried the sentinel.
+                self._ds64_data_used = True
 
             chunk_offset = f.tell()
+            self._parsed_offsets.add(chunk_offset)
             chunk_data: bytes | None
             if chunk_id == "data" and not self.read_audio:
                 if chunk_offset + chunk_size > self._file_size:
@@ -342,14 +361,14 @@ class WAVParser:
             raise CorruptedFileError("Incomplete or undersized 'ds64' chunk")
 
         riff_size, data_size, sample_count, table_length = struct.unpack("<QQQI", data[:28])
-        table: dict[str, int] = {}
+        table: dict[str, list[int]] = {}
         offset = 28
         for _ in range(table_length):
             if offset + 12 > len(data):
                 raise CorruptedFileError("Truncated 'ds64' size table")
             entry_id = data[offset : offset + 4].decode("latin-1")
             (entry_size,) = struct.unpack("<Q", data[offset + 4 : offset + 12])
-            table[entry_id] = entry_size
+            table.setdefault(entry_id, []).append(entry_size)
             offset += 12
 
         self._ds64 = _Ds64(
@@ -358,6 +377,9 @@ class WAVParser:
             sample_count=sample_count,
             table=table,
         )
+        # Sizes still to hand out to sentinel chunks, consumed in file order.
+        self._ds64_pending = {chunk_id: list(sizes) for chunk_id, sizes in table.items()}
+        self._ds64_data_used = False
         if ds64_size % 2:  # honor even-byte padding like any other chunk
             f.read(1)
 
@@ -365,10 +387,14 @@ class WAVParser:
         """Resolve a 0xFFFFFFFF sentinel size to its real 64-bit value from ds64."""
         if self._ds64 is None:  # pragma: no cover - guarded by is_rf64 caller
             raise CorruptedFileError("Size sentinel encountered without a ds64 chunk")
-        if chunk_id == "data":
+        # The first data chunk has a dedicated ds64 field; everything else,
+        # including any later data chunk, comes from the table in file order.
+        if chunk_id == "data" and not self._ds64_data_used:
+            self._ds64_data_used = True
             return self._ds64.data_size
-        if chunk_id in self._ds64.table:
-            return self._ds64.table[chunk_id]
+        pending = self._ds64_pending.get(chunk_id)
+        if pending:
+            return pending.pop(0)
         raise CorruptedFileError(
             f"Chunk '{chunk_id}' uses the 64-bit size sentinel but has no ds64 table entry"
         )
@@ -718,12 +744,16 @@ class WAVParser:
 
         # Update the first occurrence's data, preserving its offset.
         old_chunk = chunk_list[0]
-        chunk_list[0] = WAVChunk(
+        new_chunk = chunk_list[0] = WAVChunk(
             id=chunk_id,
             size=len(new_data),
             data=new_data,
             offset=old_chunk.offset,  # Offset will be recalculated on write
         )
+        # A replaced added chunk keeps its place among the added ones.
+        for i, added in enumerate(self._added):
+            if added is old_chunk:
+                self._added[i] = new_chunk
 
         # Keep format/audio state in step with the edited chunk
         if chunk_id == "fmt ":
@@ -769,14 +799,14 @@ class WAVParser:
             ) from e
 
         # Append a new occurrence, preserving any existing chunks with this ID.
-        self.chunks.setdefault(chunk_id, []).append(
-            WAVChunk(
-                id=chunk_id,
-                size=len(chunk_data),
-                data=chunk_data,
-                offset=0,  # Will be calculated on write
-            )
+        chunk = WAVChunk(
+            id=chunk_id,
+            size=len(chunk_data),
+            data=chunk_data,
+            offset=0,  # Will be calculated on write
         )
+        self.chunks.setdefault(chunk_id, []).append(chunk)
+        self._added.append(chunk)
         if chunk_id == "data":
             self._refresh_audio_state()
 
@@ -911,12 +941,13 @@ class WAVParser:
         Write the WAV file with all modifications to disk.
 
         This method reconstructs the entire WAV file, properly updating all
-        chunk offsets and the RIFF file size.
+        chunk offsets and the RIFF file size. Chunks keep the file's order;
+        chunks added in memory come after the existing ones.
 
-        Classic 32-bit WAV output is used whenever the file fits, byte-for-byte
-        identical to prior versions. The RF64/BW64 large-file form (with a
-        ``ds64`` chunk carrying 64-bit sizes) is emitted only when a size crosses
-        the 4 GB 32-bit limit, or when ``force_rf64`` is set.
+        Classic 32-bit WAV output is used whenever the file fits. The RF64/BW64
+        large-file form (with a ``ds64`` chunk carrying 64-bit sizes) is emitted
+        only when a size crosses the 4 GB 32-bit limit, or when ``force_rf64``
+        is set.
 
         Args:
             output_path: Path where the WAV file will be written
@@ -981,20 +1012,30 @@ class WAVParser:
         return written
 
     def _write_order(self) -> list[WAVChunk]:
-        """Return every chunk in write order: ``fmt `` first, ``data`` next, then
-        remaining IDs sorted, with each ID's occurrences in file order."""
-        order_ids: list[str] = []
-        if "fmt " in self.chunks:
-            order_ids.append("fmt ")
-        if "data" in self.chunks:
-            order_ids.append("data")
-        for chunk_id in sorted(self.chunks.keys()):
-            if chunk_id not in order_ids:
-                order_ids.append(chunk_id)
+        """Return every chunk in write order.
 
-        ordered: list[WAVChunk] = []
-        for chunk_id in order_ids:
-            ordered.extend(self.chunks[chunk_id])
+        Chunks from the file, including ones replaced in place (which keep their
+        offset), stay in file order. Chunks added with ``add_chunk``/``set_chunk``
+        follow in the order they were added, then any chunk placed in ``chunks``
+        directly or carrying an offset this parse didn't see. If a ``data`` chunk would
+        come before a ``fmt `` chunk, the ``fmt `` chunks move ahead of it,
+        since readers need the format first.
+        """
+        every = [chunk for chunks in self.chunks.values() for chunk in chunks]
+        placed = [c for c in every if c.offset in self._parsed_offsets]
+        ordered = sorted(placed, key=lambda c: c.offset)
+        # Added chunks in the order they were added; chunks put into self.chunks
+        # directly come last, in dict order.
+        rank = {id(c): i for i, c in enumerate(self._added)}
+        extra = [c for c in every if c.offset not in self._parsed_offsets]
+        ordered += sorted(extra, key=lambda c: rank.get(id(c), len(rank)))
+
+        first_data = next((i for i, c in enumerate(ordered) if c.id == "data"), None)
+        if first_data is not None and any(c.id == "fmt " for c in ordered[first_data:]):
+            fmts = [c for c in ordered if c.id == "fmt "]
+            before = [c for c in ordered[:first_data] if c.id != "fmt "]
+            after = [c for c in ordered[first_data:] if c.id != "fmt "]
+            ordered = before + fmts + after
         return ordered
 
     def _write_classic(self, output_path: Path, ordered: list[WAVChunk], riff_size: int) -> int:
@@ -1024,20 +1065,26 @@ class WAVParser:
         # any non-'data' chunk over 4 GB goes in the ds64 size table.
         data_size = 0
         first_data_seen = False
-        table: dict[str, int] = {}
+        table: list[tuple[str, int]] = []  # one entry per chunk, in file order
         for chunk in ordered:
             if chunk.id == "data" and not first_data_seen:
                 data_size = chunk.size
                 first_data_seen = True
             elif chunk.size > _SIZE32_MAX:
-                table[chunk.id] = chunk.size
+                table.append((chunk.id, chunk.size))
 
         fmt = self.format_info
         frame_size = fmt.frame_size if fmt and (fmt.is_pcm or fmt.is_float) else 0
         sample_count = data_size // frame_size if frame_size else 0
 
         ds64_payload = self._build_ds64_payload(0, data_size, sample_count, table)
-        ds64_chunk_len = len(ds64_payload)  # 28 + 12*len(table); always even
+        ds64_chunk_len = len(ds64_payload)  # 28 + 12 per table entry; always even
+
+        # A leading JUNK chunk exactly ds64's size is the placeholder EBU Tech 3306
+        # reserves for upgrading to RF64: the ds64 chunk takes its place.
+        if ordered and ordered[0].id == "JUNK" and ordered[0].size == ds64_chunk_len:
+            ordered = ordered[1:]
+
         riff_size = (
             4  # 'WAVE'
             + (8 + ds64_chunk_len)  # the ds64 chunk
@@ -1080,10 +1127,10 @@ class WAVParser:
 
     @staticmethod
     def _build_ds64_payload(
-        riff_size: int, data_size: int, sample_count: int, table: dict[str, int]
+        riff_size: int, data_size: int, sample_count: int, table: list[tuple[str, int]]
     ) -> bytes:
-        """Build a ds64 chunk payload from 64-bit sizes and an optional size table."""
+        """Build a ds64 chunk payload from 64-bit sizes and a per-chunk size table."""
         payload = struct.pack("<QQQI", riff_size, data_size, sample_count, len(table))
-        for chunk_id, size in table.items():
+        for chunk_id, size in table:
             payload += chunk_id.encode("latin-1") + struct.pack("<Q", size)
         return payload

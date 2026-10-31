@@ -54,8 +54,9 @@ bytes_written = parser.write_wav("modified.wav")
 
 !!! note
     Calling `parse()` again re-reads the file from disk and discards any in-memory
-    modifications. `write_wav` orders chunks as `fmt `, `data`, then the rest sorted
-    by ID, so a parse/write round-trip is not guaranteed to be byte-identical.
+    modifications. `write_wav` keeps the file's chunk order, with added chunks after
+    the existing ones, so an unedited round-trip of a well-formed classic WAV is
+    byte-identical.
 
 ## Reading recorder metadata
 
