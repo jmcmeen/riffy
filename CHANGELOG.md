@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Header-only parsing.** `WAVParser(path, read_audio=False)` records where
+  the `data` payload is (`audio_offset`, `audio_size`) without reading it, so
+  metadata work on a multi-GB recording costs only its headers, and accepts
+  any audio format since the samples are never interpreted. Payloads that
+  weren't read are streamed: `write_wav` copies them from the source file in
+  blocks (overwriting the source goes through a temporary file),
+  `export_chunk`/`export_audio_data` stream them, and the new
+  `read_chunk_data`/`iter_chunk_data` read them on demand. `read_metadata`,
+  `dump_metadata`, `diff` and every CLI command use this mode; `riffy info` on
+  a 659 MB float WAV drops from about 720 MB to 27 MB of memory. A payload
+  is only streamed from an unchanged source file; if the file was rewritten
+  since it was parsed, riffy raises instead of copying the wrong bytes.
+- `WAVChunk.from_file` marks chunks read from the file (their `offset` is
+  meaningful), as opposed to ones added or replaced in memory.
+
+- **`WAVE_FORMAT_EXTENSIBLE` and IEEE float WAVs.** 24-bit and multichannel
+  recorder files written as extensible with a PCM subformat, and 32/64-bit
+  float files (plain format 3, or extensible with the float subformat), now
+  parse instead of raising `UnsupportedFormatError`. `WAVFormat` gains
+  `subformat`, `valid_bits_per_sample`, `channel_mask`, `is_extensible`,
+  `is_float` and `effective_format`; `is_pcm` is true for extensible PCM too.
+  `get_info()["format"]` reports them, plus a `description` such as
+  `"PCM, extensible"` that both `riffy` and `riffy info` print. The format
+  codes are exported as `WAVE_FORMAT_PCM`, `WAVE_FORMAT_IEEE_FLOAT` and
+  `WAVE_FORMAT_EXTENSIBLE`.
+- `WAVFormat.frame_size` and `WAVFormat.describe()`.
+- Float files must be 32 or 64 bits, and an extensible file's valid bits can't
+  exceed its container; either problem raises `InvalidWAVFormatError`. A
+  `block_align` that doesn't match the channels and bit depth now warns.
+
+### Fixed
+
+- `sample_count` rounds bit depths up to whole bytes, so 12- and 20-bit audio
+  are counted correctly (it used to divide by the truncated byte count).
+- Replacing the `fmt ` chunk with `replace_chunk`/`set_chunk` re-parses
+  `format_info`, so it no longer reports the old format.
+- Adding, replacing or removing `data` chunks keeps `audio_data`,
+  `audio_size`, `audio_offset` and the duration consistent (adding a `data`
+  chunk to a parser that had none used to leave them unset).
+- `write_wav` is atomic: it writes a temporary file next to the target and
+  moves it into place, so a failure leaves the target untouched and no partial
+  file behind. Writing through a symlink updates the real file, and an
+  existing file keeps its permissions.
+
+### Changed
+
+- `WAVChunk.data` is `bytes | None`: `None` for a `data` chunk parsed with
+  `read_audio=False`. Code reading other chunks is unaffected; use
+  `WAVParser.read_chunk_data(chunk)` to read any payload.
+
 ## [0.3.4] - 2026-10-27
 
 ### Added

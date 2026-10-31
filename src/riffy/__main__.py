@@ -92,7 +92,10 @@ def _print_inspect(data: dict) -> None:
     print(f"File:      {data['file']}")
     print(f"RIFF form: {data['riff_form']}")
     fmt = data["format"]
-    print(f"Format:    {fmt['sample_rate']} Hz, {fmt['channels']} ch, {fmt['bits_per_sample']}-bit")
+    print(
+        f"Format:    {fmt['sample_rate']} Hz, {fmt['channels']} ch, "
+        f"{fmt['bits_per_sample']}-bit ({fmt['description']})"
+    )
     sources = data["sources"]
     print(f"Metadata:  {', '.join(sources) if sources else '(none detected)'}")
 
@@ -192,7 +195,7 @@ def _cmd_chunks(argv: Sequence[str] | None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        wav = WAVParser(args.file)
+        wav = WAVParser(args.file, read_audio=False)
         listing = wav.list_chunks()
     except (RiffyError, FileNotFoundError) as e:
         print(f"riffy: {e}", file=sys.stderr)
@@ -232,7 +235,7 @@ def _cmd_info(argv: Sequence[str] | None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        wav = WAVParser(args.file)
+        wav = WAVParser(args.file, read_audio=False)
         info = wav.get_info()
     except (RiffyError, FileNotFoundError) as e:
         print(f"riffy: {e}", file=sys.stderr)
@@ -243,12 +246,11 @@ def _cmd_info(argv: Sequence[str] | None) -> int:
         return 0
 
     fmt = info["format"]
-    kind = "PCM" if fmt["is_pcm"] else "non-PCM"
     print(f"File:        {info['file_path']}")
     print(f"RIFF form:   {wav.riff_form}")
     print(
         f"Format:      {fmt['sample_rate']} Hz, {fmt['channels']} ch, "
-        f"{fmt['bits_per_sample']}-bit ({kind})"
+        f"{fmt['bits_per_sample']}-bit ({fmt['description']})"
     )
     print(f"Byte rate:   {fmt['byte_rate']:,} B/s")
     print(f"Duration:    {info['duration_seconds']:.3f} s")
@@ -277,7 +279,7 @@ def _cmd_export(argv: Sequence[str] | None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        wav = WAVParser(args.file)
+        wav = WAVParser(args.file, read_audio=False)
         if args.audio:
             written = wav.export_audio_data(args.out)
             what = "audio"
@@ -504,7 +506,7 @@ def _cmd_set(argv: Sequence[str] | None) -> int:
 
     file_path = Path(args.file)
     try:
-        wav = WAVParser(file_path)
+        wav = WAVParser(file_path, read_audio=False)
         changes = _apply_metadata_changes(wav, args)
         if args.apply:
             atomic_write(wav, file_path, backup=args.backup, force_rf64=args.force_rf64)
@@ -534,7 +536,7 @@ def _cmd_chunk_write(op: str, argv: Sequence[str]) -> int:
     file_path = Path(args.file)
     try:
         data = Path(args.data_file).read_bytes()
-        wav = WAVParser(file_path)
+        wav = WAVParser(file_path, read_audio=False)
         method = {"add": wav.add_chunk, "replace": wav.replace_chunk, "set": wav.set_chunk}[op]
         method(args.chunk_id, data)
         if args.apply:
@@ -560,8 +562,8 @@ def _cmd_chunk_copy(argv: Sequence[str]) -> int:
 
     file_path = Path(args.file)
     try:
-        wav = WAVParser(file_path)
-        source = WAVParser(args.source)
+        wav = WAVParser(file_path, read_audio=False)
+        source = WAVParser(args.source, read_audio=False)
         wav.copy_chunk_from_parser(args.chunk_id, source)
         if args.apply:
             atomic_write(wav, file_path, backup=args.backup, force_rf64=args.force_rf64)
@@ -588,7 +590,7 @@ def _cmd_chunk_remove(argv: Sequence[str]) -> int:
 
     file_path = Path(args.file)
     try:
-        wav = WAVParser(file_path)
+        wav = WAVParser(file_path, read_audio=False)
         wav.remove_chunk(args.chunk_id, args.index)
         if args.apply:
             atomic_write(wav, file_path, backup=args.backup, force_rf64=args.force_rf64)

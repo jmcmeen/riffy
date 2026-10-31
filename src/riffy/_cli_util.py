@@ -7,7 +7,6 @@ which all share one safety contract: dry-run by default, atomic writes, optional
 ``.bak`` backups.
 """
 
-import os
 import shutil
 from pathlib import Path
 
@@ -54,13 +53,12 @@ def parse_guano_key(item: str) -> tuple[str, str]:
 def atomic_write(
     parser: WAVParser, path: Path, *, backup: bool = False, force_rf64: bool = False
 ) -> None:
-    """Persist ``parser`` back to ``path`` atomically (temp file + ``os.replace``).
+    """Persist ``parser`` back to ``path`` atomically.
 
-    When ``backup`` is set, a ``<name>.bak`` copy of the original is made before
-    the replace, so a crash mid-write can never lose the source file.
+    ``write_wav`` writes a temporary file and moves it into place, so a crash
+    mid-write never leaves a partial file. When ``backup`` is set, a
+    ``<name>.bak`` copy of the original is made first.
     """
-    tmp = path.with_name(path.name + ".riffytmp")
-    parser.write_wav(tmp, overwrite=True, force_rf64=force_rf64)
     if backup:
         shutil.copy2(path, path.with_name(path.name + ".bak"))
-    os.replace(tmp, path)
+    parser.write_wav(path, overwrite=True, force_rf64=force_rf64)

@@ -19,7 +19,7 @@ from .metadata.bext import BextMetadata
 from .metadata.guano import GuanoMetadata
 from .metadata.info import InfoMetadata
 from .metadata.wamd import WamdMetadata
-from .wav import WAVParser
+from .wav import WAVChunk, WAVParser
 
 #: Difference statuses. ``unchanged`` is only emitted for chunks (and only when
 #: requested); field deltas are always one of added/removed/changed.
@@ -87,8 +87,8 @@ def diff(
         include_unchanged: If True, include ``unchanged`` chunk deltas too
             (default: only report chunks that differ).
     """
-    pa = a if isinstance(a, WAVParser) else WAVParser(a)
-    pb = b if isinstance(b, WAVParser) else WAVParser(b)
+    pa = a if isinstance(a, WAVParser) else WAVParser(a, read_audio=False)
+    pb = b if isinstance(b, WAVParser) else WAVParser(b, read_audio=False)
     return WavDiff(
         path_a=str(pa.file_path),
         path_b=str(pb.file_path),
@@ -97,6 +97,28 @@ def diff(
         chunks=_diff_chunks(pa, pb, include_unchanged),
         fields=_diff_metadata(pa, pb),
     )
+
+
+def _same_payload(a: WAVParser, ca: WAVChunk, b: WAVParser, cb: WAVChunk) -> bool:
+    """Compare two chunk payloads block by block, without loading unread audio whole."""
+    if ca.size != cb.size:
+        return False
+    if ca.data is not None and cb.data is not None:
+        return ca.data == cb.data
+    stream_a, stream_b = a.iter_chunk_data(ca), b.iter_chunk_data(cb)
+    # memoryview slices don't copy, so a large in-memory side stays linear.
+    buf_a = buf_b = memoryview(b"")
+    while True:
+        if not buf_a:
+            buf_a = memoryview(next(stream_a, b""))
+        if not buf_b:
+            buf_b = memoryview(next(stream_b, b""))
+        if not buf_a or not buf_b:
+            return not buf_a and not buf_b
+        n = min(len(buf_a), len(buf_b))
+        if buf_a[:n] != buf_b[:n]:
+            return False
+        buf_a, buf_b = buf_a[n:], buf_b[n:]
 
 
 def _diff_chunks(a: WAVParser, b: WAVParser, include_unchanged: bool) -> list[ChunkDelta]:
@@ -108,7 +130,7 @@ def _diff_chunks(a: WAVParser, b: WAVParser, include_unchanged: bool) -> list[Ch
             ca = list_a[index] if index < len(list_a) else None
             cb = list_b[index] if index < len(list_b) else None
             if ca is not None and cb is not None:
-                status = UNCHANGED if ca.data == cb.data else CHANGED
+                status = UNCHANGED if _same_payload(a, ca, b, cb) else CHANGED
             elif cb is not None:
                 status = ADDED
             else:

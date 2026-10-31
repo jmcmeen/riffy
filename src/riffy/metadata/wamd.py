@@ -185,8 +185,9 @@ class WamdMetadata:
             return cls.from_bytes(data, chunk_id=CHUNK_ID)
         for junk_id in _JUNK_IDS:
             for chunk in parser.get_chunks(junk_id):
-                if _looks_like_wamd(chunk.data):
-                    return cls.from_bytes(chunk.data, chunk_id=junk_id)
+                data = parser.read_chunk_data(chunk)
+                if _looks_like_wamd(data):
+                    return cls.from_bytes(data, chunk_id=junk_id)
         return None
 
     # ------------------------------------------------------------------ #
@@ -385,7 +386,11 @@ class WamdMetadata:
         if self._chunk_id != CHUNK_ID:
             # A junk variant: replace the specific occurrence that holds WAMD.
             target = next(
-                (i for i, c in enumerate(occurrences) if _looks_like_wamd(c.data)),
+                (
+                    i
+                    for i, c in enumerate(occurrences)
+                    if _looks_like_wamd(parser.read_chunk_data(c))
+                ),
                 None,
             )
         if occurrences and target is not None:

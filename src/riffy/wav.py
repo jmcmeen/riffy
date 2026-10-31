@@ -1,5 +1,8 @@
+import os
 import struct
-from dataclasses import dataclass
+import warnings
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 
@@ -12,10 +15,36 @@ from .exceptions import (
     WAVError,
 )
 
+# Format codes (wFormatTag) riffy understands. Extensible files carry the real
+# format code in the first two bytes of their subformat GUID.
+WAVE_FORMAT_PCM = 0x0001
+WAVE_FORMAT_IEEE_FLOAT = 0x0003
+WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+# The 14 bytes after the format code in every KSDATAFORMAT_SUBTYPE_* GUID of the
+# {XXXXXXXX-0000-0010-8000-00AA00389B71} family, as stored in a fmt chunk.
+_KSDATAFORMAT_GUID_TAIL = bytes.fromhex("000000001000800000aa00389b71")
+# Names for describe(); unknown codes are shown by number.
+_FORMAT_NAMES = {
+    WAVE_FORMAT_PCM: "PCM",
+    0x0002: "ADPCM",
+    WAVE_FORMAT_IEEE_FLOAT: "IEEE float",
+    0x0006: "A-law",
+    0x0007: "mu-law",
+    0x0011: "IMA ADPCM",
+    0x0055: "MPEG Layer 3",
+}
+
 
 @dataclass
 class WAVFormat:
-    """WAV format information."""
+    """WAV format information.
+
+    For ``WAVE_FORMAT_EXTENSIBLE`` files (``audio_format == 0xFFFE``) the
+    extension fields are filled in: ``subformat`` is the format code from the
+    subformat GUID (``None`` if the GUID isn't a standard KSDATAFORMAT one),
+    ``valid_bits_per_sample`` the bits that carry signal, and ``channel_mask``
+    the speaker-position bitmask.
+    """
 
     audio_format: int
     channels: int
@@ -24,21 +53,68 @@ class WAVFormat:
     block_align: int
     bits_per_sample: int
     duration_seconds: float = 0.0
+    subformat: int | None = None
+    valid_bits_per_sample: int | None = None
+    channel_mask: int | None = None
+
+    @property
+    def is_extensible(self) -> bool:
+        """Whether the file uses ``WAVE_FORMAT_EXTENSIBLE``."""
+        return self.audio_format == WAVE_FORMAT_EXTENSIBLE
+
+    @property
+    def effective_format(self) -> int | None:
+        """The format code that describes the samples.
+
+        ``audio_format`` for ordinary files; the subformat for extensible ones
+        (``None`` when an extensible file's subformat isn't recognized).
+        """
+        return self.subformat if self.is_extensible else self.audio_format
 
     @property
     def is_pcm(self) -> bool:
-        """Check if format is PCM (uncompressed)."""
-        return self.audio_format == 1
+        """Whether the samples are integer PCM (plain, or extensible with a PCM subformat)."""
+        return self.effective_format == WAVE_FORMAT_PCM
+
+    @property
+    def is_float(self) -> bool:
+        """Whether the samples are IEEE float (format 3, or extensible with a float subformat)."""
+        return self.effective_format == WAVE_FORMAT_IEEE_FLOAT
+
+    @property
+    def frame_size(self) -> int:
+        """Bytes per frame (one sample for every channel): channels x whole bytes per sample."""
+        return self.channels * -(-self.bits_per_sample // 8)
+
+    def describe(self) -> str:
+        """A short name for the sample format, e.g. ``"PCM"``, ``"IEEE float, extensible"``."""
+        if self.is_extensible:
+            if self.subformat is None:
+                return "extensible (unrecognized subformat GUID)"
+            return f"{_FORMAT_NAMES.get(self.subformat, f'format {self.subformat}')}, extensible"
+        return _FORMAT_NAMES.get(self.audio_format, f"format {self.audio_format}")
 
 
 @dataclass
 class WAVChunk:
-    """Represents a RIFF chunk in the WAV file."""
+    """Represents a RIFF chunk in the WAV file.
+
+    ``data`` is the payload, or ``None`` for a ``data`` chunk parsed with
+    ``WAVParser(..., read_audio=False)``: its payload stays on disk at
+    ``offset`` and is read on demand (see :meth:`WAVParser.read_chunk_data`).
+    """
 
     id: str
     size: int
-    data: bytes
+    data: bytes | None
     offset: int
+    # True for chunks read from the file by the last parse, as opposed to ones
+    # added or replaced in memory since; only those have a meaningful offset.
+    from_file: bool = field(default=False, compare=False, repr=False)
+
+
+# Block size for streaming payloads that were not read into memory.
+_STREAM_BLOCK = 1 << 20
 
 
 # The largest value a 32-bit little-endian size field can hold. In RF64/BW64
@@ -63,6 +139,33 @@ class _Ds64:
     table: dict[str, int]
 
 
+def _atomic_write(path: Path, write: "Callable[[Path], int]") -> int:
+    """Run ``write`` on a temporary file next to ``path``, then move it into place.
+
+    The temporary file gets ``path``'s permission bits when ``path`` exists, and
+    is removed if ``write`` fails, so ``path`` is either untouched or complete.
+    """
+    import tempfile
+
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".riffytmp")
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        written = write(tmp)
+        if path.exists():
+            mode = path.stat().st_mode & 0o7777
+        else:  # what open(path, "w") would have created
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return written
+
+
 def _rf64_required(classic_riff_size: int, chunk_sizes: list[int]) -> bool:
     """Whether a file must use the RF64/BW64 form to represent its sizes.
 
@@ -75,11 +178,27 @@ def _rf64_required(classic_riff_size: int, chunk_sizes: list[int]) -> bool:
 
 
 class WAVParser:
-    """Pure Python WAV file parser."""
+    """Pure Python WAV file parser.
 
-    def __init__(self, file_path: str | Path):
-        """Initialize parser with file path and automatically parse the file."""
+    By default the whole file, audio included, is read into memory and only PCM
+    and IEEE float audio is accepted. With ``read_audio=False`` the ``data``
+    payload is not read: riffy records where it is (``audio_offset``,
+    ``audio_size``) and streams it when writing or exporting, so metadata work
+    on a multi-GB recording costs only its headers. That mode accepts any audio
+    format, since the samples are never interpreted.
+    """
+
+    def __init__(self, file_path: str | Path, *, read_audio: bool = True):
+        """Initialize parser with file path and automatically parse the file.
+
+        Args:
+            file_path: WAV (RIFF, RF64 or BW64) file to parse.
+            read_audio: Read the ``data`` payload into ``audio_data``. When
+                False, ``audio_data`` stays ``None`` and the payload is read
+                from disk only when needed.
+        """
         self.file_path = Path(file_path)
+        self.read_audio = read_audio
         self.format_info: WAVFormat | None = None
         # chunks maps a 4-character chunk ID to the ordered list of every chunk
         # with that ID, so files carrying duplicate IDs (e.g. multiple ``LIST``
@@ -87,7 +206,14 @@ class WAVParser:
         # ``get_chunks`` for ergonomic access.
         self.chunks: dict[str, list[WAVChunk]] = {}
         self.audio_data: bytes | None = None
+        # Where the first data chunk's payload is, and how long, whether or not
+        # it was read into audio_data.
+        self.audio_offset: int | None = None
+        self.audio_size = 0
         self._file_size = 0
+        # (size, mtime_ns) of the file when parsed: payloads left on disk are only
+        # streamed from the file they were found in.
+        self._source_signature: tuple[int, int] | None = None
         # RIFF form of the file on disk: "RIFF" (classic), or "RF64"/"BW64" for
         # the 64-bit large-file variants.
         self.riff_form: str = _CLASSIC_FORM
@@ -115,15 +241,19 @@ class WAVParser:
         self.format_info = None
         self.chunks = {}
         self.audio_data = None
+        self.audio_offset = None
+        self.audio_size = 0
         self.riff_form = _CLASSIC_FORM
         self._ds64 = None
 
-        self._file_size = self.file_path.stat().st_size
+        stat = self.file_path.stat()
+        self._file_size = stat.st_size
+        self._source_signature = (stat.st_size, stat.st_mtime_ns)
 
         with open(self.file_path, "rb") as f:
             self._parse_riff_header(f)
             self._parse_chunks(f)
-            self._calculate_duration()
+            self._refresh_audio_state()
             self._validate_format()
 
         return self.get_info()
@@ -172,19 +302,31 @@ class WAVParser:
                 chunk_size = self._resolve_ds64_size(chunk_id)
 
             chunk_offset = f.tell()
-            chunk_data = f.read(chunk_size)
-            if len(chunk_data) != chunk_size:
-                raise CorruptedFileError(f"Incomplete chunk: {chunk_id}")
+            chunk_data: bytes | None
+            if chunk_id == "data" and not self.read_audio:
+                if chunk_offset + chunk_size > self._file_size:
+                    raise CorruptedFileError(f"Incomplete chunk: {chunk_id}")
+                chunk_data = None
+                f.seek(chunk_size, os.SEEK_CUR)
+            else:
+                chunk_data = f.read(chunk_size)
+                if len(chunk_data) != chunk_size:
+                    raise CorruptedFileError(f"Incomplete chunk: {chunk_id}")
 
             self.chunks.setdefault(chunk_id, []).append(
-                WAVChunk(id=chunk_id, size=chunk_size, data=chunk_data, offset=chunk_offset)
+                WAVChunk(
+                    id=chunk_id,
+                    size=chunk_size,
+                    data=chunk_data,
+                    offset=chunk_offset,
+                    from_file=True,
+                )
             )
 
             # Format/audio state is taken from the first occurrence of each ID.
             if chunk_id == "fmt " and self.format_info is None:
+                assert chunk_data is not None
                 self._parse_format_chunk(chunk_data)
-            elif chunk_id == "data" and self.audio_data is None:
-                self.audio_data = chunk_data
 
             if chunk_size % 2:
                 f.read(1)
@@ -239,14 +381,16 @@ class WAVParser:
         fmt_data = struct.unpack("<HHIIHH", data[:16])
         audio_format = fmt_data[0]
 
-        # Non-PCM formats have extra fields (cbSize + extension data)
-        if audio_format != 1 and len(data) < 18:
+        # Non-PCM formats have extra fields (cbSize + extension data). IEEE
+        # float is exempt: plenty of writers emit a bare 16-byte fmt chunk for it.
+        if audio_format not in (WAVE_FORMAT_PCM, WAVE_FORMAT_IEEE_FLOAT) and len(data) < 18:
             raise InvalidWAVFormatError(
                 f"Non-PCM format (type {audio_format}) requires at least 18 bytes in format chunk"
             )
 
         # For non-PCM formats, read cbSize to validate extension data
-        if audio_format != 1:
+        cb_size = 0
+        if audio_format != WAVE_FORMAT_PCM and len(data) >= 18:
             cb_size = struct.unpack("<H", data[16:18])[0]
             expected_size = 18 + cb_size
             if len(data) < expected_size:
@@ -255,6 +399,18 @@ class WAVParser:
                     f"({expected_size} bytes) for format type {audio_format}"
                 )
 
+        subformat = valid_bits = channel_mask = None
+        if audio_format == WAVE_FORMAT_EXTENSIBLE:
+            # WAVEFORMATEXTENSIBLE: wValidBitsPerSample, dwChannelMask, SubFormat GUID.
+            if cb_size < 22:
+                raise InvalidWAVFormatError(
+                    f"WAVE_FORMAT_EXTENSIBLE needs a 22-byte extension, got cbSize={cb_size}"
+                )
+            valid_bits, channel_mask = struct.unpack("<HI", data[18:24])
+            guid = data[24:40]
+            if guid[2:] == _KSDATAFORMAT_GUID_TAIL:
+                subformat = struct.unpack("<H", guid[:2])[0]
+
         self.format_info = WAVFormat(
             audio_format=audio_format,
             channels=fmt_data[1],
@@ -262,30 +418,83 @@ class WAVParser:
             byte_rate=fmt_data[3],
             block_align=fmt_data[4],
             bits_per_sample=fmt_data[5],
+            subformat=subformat,
+            valid_bits_per_sample=valid_bits,
+            channel_mask=channel_mask,
         )
+
+    def _refresh_audio_state(self) -> None:
+        """Derive audio_data/audio_size/audio_offset from the first data chunk."""
+        chunk = self.get_chunk("data")
+        if chunk is None:
+            self.audio_data, self.audio_size, self.audio_offset = None, 0, None
+        else:
+            self.audio_data = chunk.data
+            self.audio_size = chunk.size
+            # The payload's position in the source file, while it is still the
+            # chunk that was read from there.
+            self.audio_offset = chunk.offset if chunk.from_file else None
+        self._calculate_duration()
 
     def _calculate_duration(self) -> None:
         """Calculate audio duration after all chunks are parsed."""
-        if self.audio_data and self.format_info and self.format_info.byte_rate > 0:
-            self.format_info.duration_seconds = len(self.audio_data) / self.format_info.byte_rate
+        if self.format_info:
+            byte_rate = self.format_info.byte_rate
+            self.format_info.duration_seconds = (
+                self.audio_size / byte_rate if self.audio_size and byte_rate > 0 else 0.0
+            )
 
     def _validate_format(self) -> None:
-        """Validate the parsed format."""
+        """Validate the parsed format.
+
+        Without the audio (``read_audio=False``) any audio format is accepted,
+        since riffy never interprets the samples; the structural checks still
+        apply, and PCM/float files get the same bit-depth checks either way.
+        """
         if not self.format_info:
             raise MissingChunkError("No 'fmt ' chunk found")
 
-        if not self.format_info.is_pcm:
+        fmt = self.format_info
+        supported = fmt.is_pcm or fmt.is_float
+        if not supported and self.read_audio:
             raise UnsupportedFormatError(
-                f"Unsupported audio format: {self.format_info.audio_format} (only PCM is supported)"
+                f"Unsupported audio format: {fmt.describe()} "
+                "(only PCM and IEEE float are supported)"
             )
 
-        if self.format_info.channels == 0:
+        if fmt.channels == 0:
             raise InvalidWAVFormatError("Invalid number of channels")
 
-        if self.format_info.sample_rate == 0:
+        if fmt.sample_rate == 0:
             raise InvalidWAVFormatError("Invalid sample rate")
 
-        if self.audio_data is None:
+        if supported:
+            if fmt.bits_per_sample == 0:
+                raise InvalidWAVFormatError("Invalid bits per sample")
+
+            if fmt.is_float and fmt.bits_per_sample not in (32, 64):
+                raise InvalidWAVFormatError(
+                    f"IEEE float samples must be 32 or 64 bits, not {fmt.bits_per_sample}"
+                )
+
+            if (
+                fmt.valid_bits_per_sample is not None
+                and fmt.valid_bits_per_sample > fmt.bits_per_sample
+            ):
+                raise InvalidWAVFormatError(
+                    f"Valid bits per sample ({fmt.valid_bits_per_sample}) exceed the "
+                    f"{fmt.bits_per_sample}-bit container"
+                )
+
+            if fmt.block_align != fmt.frame_size:
+                warnings.warn(
+                    f"fmt: block_align is {fmt.block_align} but {fmt.channels} channel(s) of "
+                    f"{fmt.bits_per_sample}-bit samples need {fmt.frame_size}; "
+                    f"using {fmt.frame_size}",
+                    stacklevel=2,
+                )
+
+        if "data" not in self.chunks:
             raise MissingChunkError("No 'data' chunk found")
 
     def get_info(self) -> dict:
@@ -303,10 +512,16 @@ class WAVParser:
                 "byte_rate": self.format_info.byte_rate,
                 "block_align": self.format_info.block_align,
                 "bits_per_sample": self.format_info.bits_per_sample,
+                "description": self.format_info.describe(),
                 "is_pcm": self.format_info.is_pcm,
+                "is_float": self.format_info.is_float,
+                "is_extensible": self.format_info.is_extensible,
+                "subformat": self.format_info.subformat,
+                "valid_bits_per_sample": self.format_info.valid_bits_per_sample,
+                "channel_mask": self.format_info.channel_mask,
             },
             "duration_seconds": self.format_info.duration_seconds,
-            "audio_data_size": len(self.audio_data) if self.audio_data else 0,
+            "audio_data_size": self.audio_size,
             "sample_count": self._calculate_sample_count(),
             "chunks": {
                 chunk_id: [chunk.size for chunk in chunk_list]
@@ -335,15 +550,43 @@ class WAVParser:
         This is the raw-bytes accessor the metadata layer decodes from.
         """
         chunk = self.get_chunk(chunk_id)
-        return chunk.data if chunk else None
+        return self.read_chunk_data(chunk) if chunk else None
+
+    def read_chunk_data(self, chunk: WAVChunk) -> bytes:
+        """Return a chunk's payload, reading it from disk if it wasn't loaded."""
+        if chunk.data is not None:
+            return chunk.data
+        return b"".join(self.iter_chunk_data(chunk))
+
+    def iter_chunk_data(self, chunk: WAVChunk, block_size: int = _STREAM_BLOCK) -> Iterator[bytes]:
+        """Yield a chunk's payload in blocks, without holding it all in memory."""
+        if chunk.data is not None:
+            yield chunk.data
+            return
+        stat = self.file_path.stat()
+        if (stat.st_size, stat.st_mtime_ns) != self._source_signature:
+            raise WAVError(
+                f"{self.file_path} changed since it was parsed; parse it again before "
+                "reading audio that was left on disk"
+            )
+        with open(self.file_path, "rb") as f:
+            f.seek(chunk.offset)
+            remaining = chunk.size
+            while remaining:
+                block = f.read(min(block_size, remaining))
+                if not block:
+                    raise CorruptedFileError(f"Incomplete chunk: {chunk.id}")
+                yield block
+                remaining -= len(block)
 
     def _calculate_sample_count(self) -> int:
         """Calculate total number of samples."""
-        if not self.audio_data or not self.format_info:
+        fmt = self.format_info
+        # Compressed formats have no fixed frame size; their count is unknown.
+        if not self.audio_size or not fmt or not (fmt.is_pcm or fmt.is_float):
             return 0
 
-        bytes_per_sample = self.format_info.bits_per_sample // 8
-        return len(self.audio_data) // (bytes_per_sample * self.format_info.channels)
+        return self.audio_size // fmt.frame_size if fmt.frame_size else 0
 
     def export_chunk(self, chunk_id: str, output_path: str | Path) -> int:
         """
@@ -379,11 +622,12 @@ class WAVParser:
 
         try:
             with open(output_path, "wb") as f:
-                f.write(chunk.data)
+                for block in self.iter_chunk_data(chunk):
+                    f.write(block)
         except OSError as e:
             raise WAVError(f"Failed to write chunk to {output_path}: {e}") from e
 
-        return len(chunk.data)
+        return chunk.size
 
     def export_audio_data(self, output_path: str | Path) -> int:
         """
@@ -409,7 +653,7 @@ class WAVParser:
         if not self.format_info:
             raise WAVError("File not parsed yet. Call parse() first.")
 
-        if not self.audio_data:
+        if not self.audio_size:
             raise WAVError("No audio data available to export.")
 
         return self.export_chunk("data", output_path)
@@ -481,10 +725,12 @@ class WAVParser:
             offset=old_chunk.offset,  # Offset will be recalculated on write
         )
 
-        # Update audio_data if this is the data chunk
-        if chunk_id == "data":
-            self.audio_data = new_data
+        # Keep format/audio state in step with the edited chunk
+        if chunk_id == "fmt ":
+            self._parse_format_chunk(self.read_chunk_data(self.chunks["fmt "][0]))
             self._calculate_duration()
+        elif chunk_id == "data":
+            self._refresh_audio_state()
 
     def add_chunk(self, chunk_id: str, chunk_data: bytes) -> None:
         """
@@ -531,6 +777,8 @@ class WAVParser:
                 offset=0,  # Will be calculated on write
             )
         )
+        if chunk_id == "data":
+            self._refresh_audio_state()
 
     def set_chunk(self, chunk_id: str, chunk_data: bytes) -> None:
         """
@@ -601,7 +849,7 @@ class WAVParser:
                 f"Chunk '{chunk_id}' not found in source. Available chunks: {available_chunks}"
             )
 
-        self.set_chunk(chunk_id, source_chunk.data)
+        self.set_chunk(chunk_id, source_parser.read_chunk_data(source_chunk))
 
     def remove_chunk(self, chunk_id: str, index: int | None = None) -> None:
         """
@@ -650,9 +898,8 @@ class WAVParser:
             if not chunk_list:
                 del self.chunks[chunk_id]
 
-        # Keep audio_data consistent if the data chunk is now gone entirely.
-        if chunk_id == "data" and "data" not in self.chunks:
-            self.audio_data = None
+        if chunk_id == "data":
+            self._refresh_audio_state()
 
     def write_wav(
         self,
@@ -717,9 +964,21 @@ class WAVParser:
         classic_riff_size = 4 + sum(8 + c.size + (c.size % 2) for c in ordered)
         need_rf64 = force_rf64 or _rf64_required(classic_riff_size, [c.size for c in ordered])
 
-        if need_rf64:
-            return self._write_rf64(output_path, ordered)
-        return self._write_classic(output_path, ordered, classic_riff_size)
+        # Write next to the real file (through any symlink) and swap it in, so a
+        # failure never leaves a partial file and overwriting the source is safe
+        # while its unread payloads are streamed from it.
+        real_path = output_path.resolve()
+        in_place = real_path == self.file_path.resolve()
+
+        def write(target: Path) -> int:
+            if need_rf64:
+                return self._write_rf64(target, ordered)
+            return self._write_classic(target, ordered, classic_riff_size)
+
+        written = _atomic_write(real_path, write)
+        if in_place and any(c.data is None for c in ordered):
+            self.parse()  # payload offsets now refer to the rewritten file
+        return written
 
     def _write_order(self) -> list[WAVChunk]:
         """Return every chunk in write order: ``fmt `` first, ``data`` next, then
@@ -750,7 +1009,8 @@ class WAVParser:
             for chunk in ordered:
                 f.write(chunk.id.encode("ascii"))
                 f.write(struct.pack("<I", chunk.size))
-                f.write(chunk.data)
+                for block in self.iter_chunk_data(chunk):
+                    f.write(block)
                 bytes_written += 8 + chunk.size
                 if chunk.size % 2:
                     f.write(b"\x00")
@@ -772,8 +1032,9 @@ class WAVParser:
             elif chunk.size > _SIZE32_MAX:
                 table[chunk.id] = chunk.size
 
-        block_align = self.format_info.block_align if self.format_info else 0
-        sample_count = data_size // block_align if block_align else 0
+        fmt = self.format_info
+        frame_size = fmt.frame_size if fmt and (fmt.is_pcm or fmt.is_float) else 0
+        sample_count = data_size // frame_size if frame_size else 0
 
         ds64_payload = self._build_ds64_payload(0, data_size, sample_count, table)
         ds64_chunk_len = len(ds64_payload)  # 28 + 12*len(table); always even
@@ -808,7 +1069,8 @@ class WAVParser:
 
                 f.write(chunk.id.encode("ascii"))
                 f.write(struct.pack("<I", size_field))
-                f.write(chunk.data)
+                for block in self.iter_chunk_data(chunk):
+                    f.write(block)
                 bytes_written += 8 + chunk.size
                 if chunk.size % 2:
                     f.write(b"\x00")
