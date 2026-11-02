@@ -254,3 +254,8 @@ jobs:
           if [ -f .github/workflows/publish.yml ]; then
             gh workflow run publish.yml --ref "$TAG"
           fi
+          # Likewise the docs: they deploy per release (from the tag), not per
+          # merge, so the site never describes code that isn't released yet.
+          if [ -f .github/workflows/docs.yml ]; then
+            gh workflow run docs.yml --ref "$TAG"
+          fi
